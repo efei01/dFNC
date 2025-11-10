@@ -1,14 +1,8 @@
 /.DS_Store
 .ipynb_checkpoints/
 CIMT_data/
-Shm.zip
-CCI.zip
-off_on_split/
-RAT_cortex.png
 FPI_RS_share/
-FPI_RS_share.zip
-ICA_Results/
-SIGMA_Functional_Atlas/
-gRAICAR/
-CIMT_TimePoint_Comparison.ipynb
-gRAICAR_generateReport.m
+caltech/
+bipartitions code package/
+RABIES_tutorial/
+osl-dynamics/
