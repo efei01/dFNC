@@ -1,0 +1,67 @@
+================================================================================
+COMPREHENSIVE MODULARITY SIGNIFICANCE ANALYSIS REPORT
+================================================================================
+
+Analysis Date: 2026-02-09 17:23:31
+Parameters:
+  - Gamma (resolution): 1.0
+  - Consensus iterations: 1000
+  - Permutations: 10000
+  - Significance level: 0.01
+  - Random seed: 0
+
+OVERALL SUMMARY
+----------------------------------------
+Total configurations analyzed: 7
+K values tested: [7]
+Brain states per k: 7
+
+TOP 10 CONFIGURATIONS BY Q SCORE
+----------------------------------------
+k=7, State 4: Q=0.6587, Z=18.41 (HIGHLY SIGNIFICANT)
+k=7, State 3: Q=0.6465, Z=16.55 (HIGHLY SIGNIFICANT)
+k=7, State 6: Q=0.6437, Z=18.96 (HIGHLY SIGNIFICANT)
+k=7, State 2: Q=0.6372, Z=19.64 (HIGHLY SIGNIFICANT)
+k=7, State 5: Q=0.6154, Z=17.84 (HIGHLY SIGNIFICANT)
+k=7, State 0: Q=0.6135, Z=19.45 (HIGHLY SIGNIFICANT)
+k=7, State 1: Q=0.5735, Z=18.97 (HIGHLY SIGNIFICANT)
+
+TOP 10 CONFIGURATIONS BY Z-SCORE
+----------------------------------------
+k=7, State 2: Z=19.64, Q=0.6372 (HIGHLY SIGNIFICANT)
+k=7, State 0: Z=19.45, Q=0.6135 (HIGHLY SIGNIFICANT)
+k=7, State 1: Z=18.97, Q=0.5735 (HIGHLY SIGNIFICANT)
+k=7, State 6: Z=18.96, Q=0.6437 (HIGHLY SIGNIFICANT)
+k=7, State 4: Z=18.41, Q=0.6587 (HIGHLY SIGNIFICANT)
+k=7, State 5: Z=17.84, Q=0.6154 (HIGHLY SIGNIFICANT)
+k=7, State 3: Z=16.55, Q=0.6465 (HIGHLY SIGNIFICANT)
+
+
+ANALYSIS BY K VALUE
+================================================================================
+
+k = 7 clusters
+----------------------------------------
+Mean Q: 0.6269 ± 0.0287
+Mean Z-score: 18.544 ± 1.068
+Mean modules: 6.4 ± 0.8
+Mean % significant: 100.0%
+Significance breakdown:
+  Highly significant: 7/7
+  Significant: 0/7
+  Marginally significant: 0/7
+  Not significant: 0/7
+
+
+INTERPRETATION GUIDE
+================================================================================
+Z-Score Interpretation:
+  > 3.0: Highly significant (p < 0.001) - Very strong modular structure
+  > 2.0: Significant (p < 0.05) - Clear modular structure
+  > 1.65: Marginally significant (p < 0.10) - Moderate modular structure
+  ≤ 1.65: Not significant - Weak or no modular structure
+
+Module Significance:
+  - Individual modules are tested against random permutations
+  - Significant modules have higher Q than expected by chance
+  - Non-significant modules may be spurious or unstable

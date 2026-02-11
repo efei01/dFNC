@@ -1,0 +1,61 @@
+================================================================================
+COMPREHENSIVE MODULARITY SIGNIFICANCE ANALYSIS REPORT
+================================================================================
+
+Analysis Date: 2026-02-09 18:31:40
+Parameters:
+  - Gamma (resolution): 1.0
+  - Consensus iterations: 1000
+  - Permutations: 10000
+  - Significance level: 0.01
+  - Random seed: 0
+
+OVERALL SUMMARY
+----------------------------------------
+Total configurations analyzed: 4
+K values tested: [4]
+Brain states per k: 4
+
+TOP 10 CONFIGURATIONS BY Q SCORE
+----------------------------------------
+k=4, State 2: Q=0.6869, Z=17.08 (HIGHLY SIGNIFICANT)
+k=4, State 1: Q=0.6275, Z=19.08 (HIGHLY SIGNIFICANT)
+k=4, State 3: Q=0.5926, Z=20.05 (HIGHLY SIGNIFICANT)
+k=4, State 0: Q=0.5781, Z=20.09 (HIGHLY SIGNIFICANT)
+
+TOP 10 CONFIGURATIONS BY Z-SCORE
+----------------------------------------
+k=4, State 0: Z=20.09, Q=0.5781 (HIGHLY SIGNIFICANT)
+k=4, State 3: Z=20.05, Q=0.5926 (HIGHLY SIGNIFICANT)
+k=4, State 1: Z=19.08, Q=0.6275 (HIGHLY SIGNIFICANT)
+k=4, State 2: Z=17.08, Q=0.6869 (HIGHLY SIGNIFICANT)
+
+
+ANALYSIS BY K VALUE
+================================================================================
+
+k = 4 clusters
+----------------------------------------
+Mean Q: 0.6213 ± 0.0484
+Mean Z-score: 19.074 ± 1.411
+Mean modules: 6.2 ± 2.1
+Mean % significant: 100.0%
+Significance breakdown:
+  Highly significant: 4/4
+  Significant: 0/4
+  Marginally significant: 0/4
+  Not significant: 0/4
+
+
+INTERPRETATION GUIDE
+================================================================================
+Z-Score Interpretation:
+  > 3.0: Highly significant (p < 0.001) - Very strong modular structure
+  > 2.0: Significant (p < 0.05) - Clear modular structure
+  > 1.65: Marginally significant (p < 0.10) - Moderate modular structure
+  ≤ 1.65: Not significant - Weak or no modular structure
+
+Module Significance:
+  - Individual modules are tested against random permutations
+  - Significant modules have higher Q than expected by chance
+  - Non-significant modules may be spurious or unstable
