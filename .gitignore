@@ -7,3 +7,7 @@ bipartitions code package/
 RABIES_tutorial/
 osl-dynamics/
 HMM/GLMHMM_Functions.ipynb
+HMM/CIMT/rs/results
+HMM/CIMT/LLstim/results
+HMM/CIMT/RLstim/results
+HMM/FPI/results
