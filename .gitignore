@@ -7,8 +7,19 @@ bipartitions code package/
 RABIES_tutorial/
 osl-dynamics/
 HMM/GLMHMM_Functions.ipynb
+HMM/brain_connectivity_vizuals.py
+HMM/brain_modularity_pipeline_enhanced_final_v4.py
+HMM/test_k9_enhanced_final_v2 stim z scored corrected testing module v4.py
 HMM/CIMT/omst_filter_matrices
 HMM/CIMT/rs/results
 HMM/CIMT/LLstim/results
 HMM/CIMT/RLstim/results
+HMM/CIMT/_signal_tools.py
 HMM/FPI/results
+BrainSpace_Gradient.ipynb
+CIMT_TimePoint_Comparison.ipynb
+expanded modularity pipeline - Stim_v2 white matter corrected.ipynb
+Hierarchical_cluster_rois.ipynb
+omst processing for stim_v2 z score correct k2_k4.ipynb
+roi_coordinates.py
+run_omst_single_matrix.m
