@@ -69,18 +69,18 @@ def get_eigenvectors(dFC,n=1):
 def load_data(data_path, data_prep_method, bad_ICs=None, standardize=True):
     """
     Args:
-        data_path:        str
-                          Path to the data
-        data_prep_method: str
-                          'ICA' or 'LEiDA'
-        bad_ICs:          list
-                          1-based indices of independent components that need to be removed. None by default. Ignored if data_prep_method isn't 'ICA'
-                          Note to self: [1, 6, 9, 18] for CIMT/rs, [6, 11, 12, 14] for CIMT/LLstim
-        standardize:      bool
-                          Whether to standardize the data. True by default
+        data_path        : str
+                           Path to the data
+        data_prep_method : str
+                           'ICA' or 'LEiDA'
+        bad_ICs          : list
+                           1-based indices of independent components that need to be removed. None by default. Ignored if data_prep_method isn't 'ICA'
+                           Note to self: [1, 6, 9, 18] for CIMT/rs, [6, 11, 12, 14] for CIMT/LLstim
+        standardize      : bool
+                           Whether to standardize the data. True by default
     Returns:
-        X:                ndarray with shape (n_subjects, n_timepoints, n_channels)
-        full_data:        osl_dynamics Data object
+        X                : ndarray with shape (n_subjects, n_timepoints, n_channels)
+        full_data        : osl_dynamics Data object
     """
     if data_prep_method == 'ICA':   
         with open(os.path.join(data_path, data_path.split('/')[-1] + 'SelectedDataFolders.txt'), 'r') as f:
@@ -116,21 +116,21 @@ def load_data(data_path, data_prep_method, bad_ICs=None, standardize=True):
 def create_folds(n_splits, X, y, inner_val_size, random_state):
     """
     Args:
-        n_splits:       int
-                        Number of folds to create
-        X:              ndarray with shape (n_subjects, n_timepoints, n_channels)
-                        The first output of load_data()
-        y:              ndarray with shape (n_subjects,)
-                        The experimental cohort of each subject in the EXACT order that the subjects appear in X
-        inner_val_size: float in (0, 1)
-                        Within each fold, a training set and test set are created, and the training set is further split into an inner training set and an inner 
-                        validation set. inner_val_size is the proportion of the training set reserved for the inner validaton set
-        random_state:   int
-                        The random_state passed into train_test_split() when splitting the training set into an inner training set and an inner validation set
+        n_splits       : int
+                         Number of folds to create
+        X              : ndarray with shape (n_subjects, n_timepoints, n_channels)
+                         The first output of load_data()
+        y              : ndarray with shape (n_subjects,)
+                         The experimental cohort of each subject in the EXACT order that the subjects appear in X
+        inner_val_size : float in (0, 1)
+                         Within each fold, a training set and test set are created, and the training set is further split into an inner training set and an inner 
+                         validation set. inner_val_size is the proportion of the training set reserved for the inner validaton set
+        random_state   : int
+                         The random_state passed into train_test_split() when splitting the training set into an inner training set and an inner validation set
     Returns:
-        split_plan:     dict
-                        Keys are 'outer_train', 'outer_test', 'inner_train', and 'inner_val'. Each of the values is a list of length n_splits containing
-                        osl_dynamics Data objects
+        split_plan     : dict
+                         Keys are 'outer_train', 'outer_test', 'inner_train', and 'inner_val'. Each of the values is a list of length n_splits containing
+                         osl_dynamics Data objects
     """
     skf = StratifiedKFold(n_splits=n_splits)
 
@@ -175,12 +175,12 @@ def create_folds(n_splits, X, y, inner_val_size, random_state):
 def get_hyperparam_combinations(hyperparam_grid):
     """
     Args:
-        hyperparam_grid:         dict
-                                 Keys are hyperparameter names. Values should be lists containing values of the corresponding hyperparameter that need to be searched
+        hyperparam_grid         : dict
+                                  Keys are hyperparameter names. Values should be lists containing values of the corresponding hyperparameter that need to be searched
     Returns:
-        hyperparam_combinations: list
-                                 Contains the hyperparameter combinations as dictionaries. Each combination dictionary has the hyperparameter names as keys and a
-                                 single corresponding value for each hyperparameter as the values
+        hyperparam_combinations : list
+                                  Contains the hyperparameter combinations as dictionaries. Each combination dictionary has the hyperparameter names as keys and a
+                                  single corresponding value for each hyperparameter as the values
     """
     combinations = itertools.product(*param_grid.values())
     hyperparam_combinations = [dict(zip(param_grid.keys(), combination)) for combination in combinations]
@@ -189,17 +189,17 @@ def get_hyperparam_combinations(hyperparam_grid):
 def run_grid_search(model_eval_log, model_eval_log_save_path, hyperparam_grid, seed, split_plan):
     """
     Args:
-        model_eval_log:           dict
-                                  Can be empty or not. Will be modified by this function
-        model_eval_log_save_path: str
-                                  The path at which to save model_eval_log as a pickle. A save is done after the grid search for each k value
-        hyperparam_grid:          list
-                                  Output of get_hyperparam_combinations(). Must have keys 'k', 'sequence_length', 'learn_means', 'learn_covariances', 'batch_size', 
-                                  'learning_rate', 'lr_decay', 'n_epochs', and 'patience'
-        seed:                     int
-                                  For reproducibility
-        split_plan:               dict
-                                  Output of create_folds
+        model_eval_log           : dict
+                                   Can be empty or not. Will be modified by this function
+        model_eval_log_save_path : str
+                                   The path at which to save model_eval_log as a pickle. A save is done after the grid search for each k value
+        hyperparam_grid          : list
+                                   Output of get_hyperparam_combinations(). Must have keys 'k', 'sequence_length', 'learn_means', 'learn_covariances', 'batch_size', 
+                                   'learning_rate', 'lr_decay', 'n_epochs', and 'patience'
+        seed                     : int
+                                   For reproducibility
+        split_plan               : dict
+                                   Output of create_folds
     Returns:
         None
     """
@@ -278,12 +278,12 @@ def run_grid_search(model_eval_log, model_eval_log_save_path, hyperparam_grid, s
 def plot_cv_loss(model_eval_log, k, n_splits):
     """
     Args:
-        model_eval_log: dict
-                        model_eval_log as modified by run_grid_search()
-        k:              int
-                        k value for which to plot the training and validation loss curves of optimal hyperparameters
-        n_splits:       int
-                        The same as the n_splits argument passed into create_folds
+        model_eval_log : dict
+                         model_eval_log as modified by run_grid_search()
+        k              : int
+                         k value for which to plot the training and validation loss curves of optimal hyperparameters
+        n_splits       : int
+                         The same as the n_splits argument passed into create_folds
     Returns:
         None
     """
@@ -303,10 +303,10 @@ def plot_cv_loss(model_eval_log, k, n_splits):
 def hyperparam_performance(model_eval_log, k):
     """
     Args:
-        model_eval_log: dict
-                        model_eval_log as modified by run_grid_search()
-        k:              int
-                        k value for which to print searched hyperparameters and corresponding results
+        model_eval_log : dict
+                         model_eval_log as modified by run_grid_search()
+        k              : int
+                         k value for which to print searched hyperparameters and corresponding results
     Returns:
         None
     """
