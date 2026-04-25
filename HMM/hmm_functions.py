@@ -4,7 +4,6 @@ import random
 import os
 import re
 import nibabel as nib
-from _signal_tools import get_eigenvectors
 from sklearn.model_selection import StratifiedKFold, train_test_split
 import matplotlib.pyplot as plt
 import copy
