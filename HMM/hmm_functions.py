@@ -34,17 +34,15 @@ def get_eigenvectors(dFC,n=1):
     Params:
     -------
     dFC : ndarray with shape (N_volumes,N_rois,N_rois). # my change
-        Contains the phase-coherence matrices
-        for each time point t.
+          Contains the phase-coherence matrices for each time point t.
 
-    n : int. 
-        The number of desired eigenvalues and
-        eigenvectors.
+    n   : int. 
+          The number of desired eigenvalues and eigenvectors.
     
     Returns:
     --------
     LEi : ndarray with shape (N_time_points, N_ROIs)
-        Extracted leading eigenvectors.
+          Extracted leading eigenvectors.
     """
     if not isinstance(dFC,np.ndarray) or (isinstance(dFC,np.ndarray) and dFC.ndim!=3):
         raise Exception("'dFC' must be a 3D array!")
@@ -182,8 +180,8 @@ def get_hyperparam_combinations(hyperparam_grid):
                                   Contains the hyperparameter combinations as dictionaries. Each combination dictionary has the hyperparameter names as keys and a
                                   single corresponding value for each hyperparameter as the values
     """
-    combinations = itertools.product(*param_grid.values())
-    hyperparam_combinations = [dict(zip(param_grid.keys(), combination)) for combination in combinations]
+    combinations = itertools.product(*hyperparam_grid.values())
+    hyperparam_combinations = [dict(zip(hyperparam_grid.keys(), combination)) for combination in combinations]
     return hyperparam_combinations
 
 def run_grid_search(model_eval_log, model_eval_log_save_path, hyperparam_grid, seed, split_plan):
@@ -204,7 +202,7 @@ def run_grid_search(model_eval_log, model_eval_log_save_path, hyperparam_grid, s
         None
     """
     i = 1
-    for hyperparams in get_param_combinations(hyperparam_grid):
+    for hyperparams in get_hyperparam_combinations(hyperparam_grid):
         print(f"\nHyperparam set {i}: {hyperparams}")
 
         random.seed(42)
@@ -225,7 +223,7 @@ def run_grid_search(model_eval_log, model_eval_log_save_path, hyperparam_grid, s
             histories = []
             best_epochs = []
             test_free_energies = []
-            for f in range(n_splits):
+            for f in range(len(split_plan['outer_test'])):
                 print(f"\nFold {f + 1}...")
                 outer_test, inner_train, inner_val = split_plan['outer_test'][f], split_plan['inner_train'][f], split_plan['inner_val'][f]
                 config = Config(
@@ -275,19 +273,19 @@ def run_grid_search(model_eval_log, model_eval_log_save_path, hyperparam_grid, s
         with open(model_eval_log_save_path, 'wb') as f:
             pickle.dump(model_eval_log, f)
 
-def plot_cv_loss(model_eval_log, k, n_splits):
+def plot_cv_loss(model_eval_log, k, split_plan):
     """
     Args:
         model_eval_log : dict
                          model_eval_log as modified by run_grid_search()
         k              : int
                          k value for which to plot the training and validation loss curves of optimal hyperparameters
-        n_splits       : int
-                         The same as the n_splits argument passed into create_folds
+        split_plan     : int
+                         Output of create_folds
     Returns:
         None
     """
-    for f in range(n_splits):
+    for f in range(len(split_plan)):
         example = model_eval_log[k]['histories'][np.nanargmin(np.mean(model_eval_log[k]['test_free_energies'], axis=1))]
         fig, ax = plt.subplots(1, 1)
         x = range(1, len(example[f]['loss']) + 1)
