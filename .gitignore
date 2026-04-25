@@ -21,6 +21,7 @@ HMM/FPI/results
 BrainSpace_Gradient.ipynb
 CIMT_TimePoint_Comparison.ipynb
 expanded modularity pipeline - Stim_v2 white matter corrected.ipynb
+feat_preprocess.ipynb
 Gradients_Clean.ipynb
 gRAICAR_generateReport.m
 Hierarchical_cluster_rois.ipynb
