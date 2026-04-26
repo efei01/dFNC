@@ -15,6 +15,7 @@ import pickle
 from osl_dynamics.data import Data, processing
 from osl_dynamics.models.hmm import Config, Model
 import math
+from scipy.special import logsumexp
 from osl_dynamics.models import load
 from osl_dynamics.utils import plotting
 from osl_dynamics.inference import modes
@@ -71,14 +72,14 @@ def load_data(data_path, data_prep_method, bad_ICs=None, standardize=True):
                            Path to the data
         data_prep_method : str
                            'ICA' or 'LEiDA'
-        bad_ICs          : list
+        bad_ICs          : list[int]
                            1-based indices of independent components that need to be removed. None by default. Ignored if data_prep_method isn't 'ICA'
                            Note to self: [1, 6, 9, 18] for CIMT/rs, [6, 11, 12, 14] for CIMT/LLstim
         standardize      : bool
                            Whether to standardize the data. True by default
     Returns:
         X                : ndarray with shape (n_subjects, n_timepoints, n_channels)
-        full_data        : osl_dynamics Data object
+        full_data        : osl_dynamics.data.Data object
     """
     if data_prep_method == 'ICA':   
         with open(os.path.join(data_path, data_path.split('/')[-1] + 'SelectedDataFolders.txt'), 'r') as f:
@@ -128,7 +129,7 @@ def create_folds(n_splits, X, y, inner_val_size, random_state):
     Returns:
         split_plan     : dict
                          Keys are 'outer_train', 'outer_test', 'inner_train', and 'inner_val'. Each of the values is a list of length n_splits containing
-                         osl_dynamics Data objects
+                         osl_dynamics.data.Data objects
     """
     skf = StratifiedKFold(n_splits=n_splits)
 
@@ -176,7 +177,7 @@ def get_hyperparam_combinations(hyperparam_grid):
         hyperparam_grid         : dict
                                   Keys are hyperparameter names. Values should be lists containing values of the corresponding hyperparameter that need to be searched
     Returns:
-        hyperparam_combinations : list
+        hyperparam_combinations : list[dict]
                                   Contains the hyperparameter combinations as dictionaries. Each combination dictionary has the hyperparameter names as keys and a
                                   single corresponding value for each hyperparameter as the values
     """
@@ -191,13 +192,13 @@ def run_grid_search(model_eval_log, model_eval_log_save_path, hyperparam_grid, s
                                    Can be empty or not. Will be modified by this function
         model_eval_log_save_path : str
                                    The path at which to save model_eval_log as a pickle. A save is done after the grid search for each k value
-        hyperparam_grid          : list
-                                   Output of get_hyperparam_combinations(). Must have keys 'k', 'sequence_length', 'learn_means', 'learn_covariances', 'batch_size', 
+        hyperparam_grid          : list[dict]
+                                   Output of get_hyperparam_combinations(). Each combination dictionary must have keys 'k', 'sequence_length', 'learn_means', 'learn_covariances', 'batch_size', 
                                    'learning_rate', 'lr_decay', 'n_epochs', and 'patience'
         seed                     : int
                                    For reproducibility
         split_plan               : dict
-                                   Output of create_folds
+                                   Output of create_folds()
     Returns:
         None
     """
@@ -205,8 +206,8 @@ def run_grid_search(model_eval_log, model_eval_log_save_path, hyperparam_grid, s
     for hyperparams in get_hyperparam_combinations(hyperparam_grid):
         print(f"\nHyperparam set {i}: {hyperparams}")
 
-        random.seed(42)
-        np.random.seed(42)
+        random.seed(seed)
+        np.random.seed(seed)
 
         k = hyperparams['k']
         del hyperparams['k']
@@ -281,11 +282,11 @@ def plot_cv_loss(model_eval_log, k, split_plan):
         k              : int
                          k value for which to plot the training and validation loss curves of optimal hyperparameters
         split_plan     : int
-                         Output of create_folds
+                         Output of create_folds()
     Returns:
         None
     """
-    for f in range(len(split_plan)):
+    for f in range(len(split_plan['outer_test'])):
         example = model_eval_log[k]['histories'][np.nanargmin(np.mean(model_eval_log[k]['test_free_energies'], axis=1))]
         fig, ax = plt.subplots(1, 1)
         x = range(1, len(example[f]['loss']) + 1)
@@ -317,3 +318,184 @@ def hyperparam_performance(model_eval_log, k):
         key=lambda x: x[1]
     ):
         print(f"{h}: {t:.3f}, took {e:.1f} epochs on average")
+
+# Adapted osl_dynamics.models.inf_mod_base.MarkovStateInferenceModelBase.evidence() to return the full log-likelihood
+def hmm_full_loglik(model, dataset):
+    """
+    Args:
+        model       : osl_dynamics.models.hmm.Model object
+        dataset     : osl_dynamics.data.Data object
+    Returns:
+        full_loglik : float
+                      The full log-likelihood of the dataset given the model
+    """
+    ds = model.make_dataset(dataset, concatenate=True)
+
+    eps = np.finfo(float).eps # to prevent taking np.log(0)
+    log_pi = np.log(model.get_initial_state_probs() + eps) # log p(s_1)
+    log_A = np.log(model.get_trans_prob() + eps) # log p(s_t | s_{t-1})
+
+    full_loglik = 0.0
+
+    for batch in ds:
+        x = batch["data"]
+        if hasattr(x, "numpy"):
+            x = x.numpy()
+        else:
+            x = np.asarray(x)
+
+        batch_size, sequence_length, _ = x.shape # x should have shape (batch_size, sequence_length, n_channels)
+
+        log_filt = None # log p(x_t, s_t∣x_{1:t-1})
+
+        for t in range(sequence_length):
+            if log_filt is None:
+                log_pred = np.broadcast_to(log_pi[None, :], (batch_size, model.config.n_states)) # log p(s_t | x_{1:t-1})
+            else:
+                # shape: (B, n_states_next)
+                log_pred = logsumexp(
+                    log_filt[:, :, None] + log_A[None, :, :],
+                    axis=1,
+                ) # log p(s_t | x_{1:t-1})
+
+            log_B = model.get_log_likelihood(x[:, t:t+1, :])[:, 0, :] # log p(x_t | s_t)
+            log_filt = log_pred + log_B
+
+            log_c = logsumexp(log_filt, axis=1) # log p(x_t | x_{1:t-1})
+            full_loglik += log_c.sum()
+
+            # normalize for next step
+            log_filt -= log_c[:, None] # log p(s_t | x_{1:t})
+
+    return full_loglik
+    
+def run_full_model_eval(model_eval_log, model_eval_log_save_path, k_values, n_realizations, model_save_metric, results_path, seed, full_data):
+    """
+    Args:
+        model_eval_log           : dict
+                                   model_eval_log as modified by run_grid_search(). The actual values of the model evaluation metrics will be stored here
+        model_eval_log_save_path : str
+                                   The path at which to save model_eval_log as a pickle. A save is done after the grid search for each k value
+        k_values                 : list[int]
+                                   k values for which to run model evaluation for
+        n_realizations           : int
+                                   Number of models to fit for each k value to account for variance in model initialization
+        model_save_metric        : str
+                                   'free_energy', 'full_LL' (full log-likelihood), 'BIC' (Bayesian information criterion), or 'MMDL' (mixture minimum description length).
+                                   The realization that scores the best on model_save_metric is saved
+        results_path             : str
+                                   Directory in which to save models
+        seed                     : int
+                                   For reproducibility
+        full_data                : osl_dynamics.data.Data object
+                                   The full dataset
+    Returns:
+        None
+    """
+    for k in k_values: 
+        print(f"Fitting model with {k} states...")
+        if 'realizations' in model_eval_log[k] and len(model_eval_log[k]['realizations']) < n_realizations:
+            del model_eval_log[k]['realizations']
+            del model_eval_log[k]['free_energy']
+            del model_eval_log[k]['full_LL'] 
+            del model_eval_log[k]['BIC'] 
+            del model_eval_log[k]['MMDL'] 
+        
+        if 'realizations' not in model_eval_log[k]:
+            model_eval_log[k]['realizations'] = []
+            realizations = [] # contains model object from each realization. Models can't be pickled, so we will pick the best realization and save the corresponding model object separately
+            model_eval_log[k]['free_energy'] = []
+            model_eval_log[k]['full_LL'] = []
+            model_eval_log[k]['BIC'] = []
+            model_eval_log[k]['MMDL'] = []
+            
+            random.seed(seed)
+            np.random.seed(seed)
+            
+            for r in range(n_realizations): # account for variability in .random_state_time_course_initialization(), then average later
+                print(f"Realization {r + 1}:")
+                model_eval_log[k]['realizations'].append({})
+                best_hyperparams_idx = np.nanargmin(np.mean(model_eval_log[k]['test_free_energies'], axis=1))
+                best_hyperparams = model_eval_log[k]['hyperparams'][best_hyperparams_idx]
+                config = Config(
+                    n_states=k,
+                    n_channels=full_data.n_channels,
+                    sequence_length=best_hyperparams['sequence_length'],
+                    learn_means=best_hyperparams['learn_means'],
+                    learn_covariances=best_hyperparams['learn_covariances'],
+                    batch_size=best_hyperparams['batch_size'],
+                    learning_rate=best_hyperparams['learning_rate'],
+                    lr_decay=best_hyperparams['lr_decay'],
+                    n_epochs=math.ceil(np.mean(model_eval_log[k]['best_epochs'][best_hyperparams_idx])),
+                    loss_calc='mean', # to get the average per-timepoint log likelihood when computing test evidence
+                )
+        
+                model = Model(config)
+                try:
+                    model.random_state_time_course_initialization(full_data, verbose=0)
+                except ValueError:
+                    print("random_state_time_course_initialization can't simulate a state time course where each state activates. Switching to using random_subset_initialization instead.")
+                    model.random_subset_initialization(full_data, verbose=0)
+    
+                history = model.fit(full_data, verbose=0)
+                realizations.append(model)
+                
+                free_energy = model.free_energy(full_data) # note that .free_energy() returns the free energy averaged over batches
+                model_eval_log[k]['free_energy'].append(free_energy)
+        
+                means, covs = model.get_means_covariances() 
+                if best_hyperparams['learn_means']:
+                    model_eval_log[k]['realizaations'][r]['means'] = means
+                if best_hyperparams['learn_covariances']:
+                    model_eval_log[k]['realizations'][r]['covs'] = covs
+            
+                off_diags = []
+                """
+                FIGURE OUT DOF
+                """
+                dof = [] # degrees of freedom of inverse covariance matrices (precision matrices), used to compute MMDL
+                for cov in covs:
+                    ut = np.triu(cov, k=1) # upper triangle, excluding main diagonal
+                    off_diag = ut[ut != 0] # np.triu() returns a full matrix, so filter out lower triangle entries and flatten to a 1-D array
+                    off_diags.append(off_diag)
+        
+                    precision_matrix = np.linalg.inv(cov)
+                    precision_matrix_ut = np.triu(precision_matrix) # upper triangle, incuding main diagonal
+                    dof.append(np.sum(precision_matrix_ut != 0)) # "Df(k) is the number of non-zeroes in the precision matrix"
+            
+                model_eval_log[k]['realizations'][r]['off_diags'] = np.array(off_diags).T # (number of upper triangle entries x k)
+                
+                full_LL = total_loglik(model, full_data)
+                model_eval_log[k]['full_LL'].append(full_LL)
+            
+                # Compute Bayesian Information Criterion (BIC)
+                d = full_data.n_channels
+                n_estimated_params = (k - 1) + k * (k - 1) # k initial state probabilities (but must sum to 1, so only k - 1 need to be estimated), and k * (k - 1) transition probabilities
+                if best_hyperparams['learn_means']:
+                    n_estimated_params += k * d # d x 1 mean vector per state
+                if best_hyperparams['learn_covariances']:
+                    n_estimated_params += k * (d * (d + 1)) / 2 # d x d covariance matrix per state. Since the covariance is symmetric, we just keep the upper triangle, including the main diagonal, which sums to (d * (d - 1)) / 2 + d = (d * (d - 1) + 2d) / 2 = (d * (d + 1)) / 2 covariance params per state
+                BIC = n_estimated_params * np.log(full_data.n_samples) - 2 * full_LL
+                model_eval_log[k]['BIC'].append(BIC)
+        
+                # Compute Mixture Minimum Description Length (MMDL) 
+                alpha = np.array(model.get_alpha(full_data)) # state probability time courses for each subject (subjects x timepoints x k)
+                third_term = np.sum([np.log(full_data.n_samples * np.sum(alpha[:, :, state_num])) * dof[state_num] for state_num in range(k)]) / 2
+                MMDL = -full_LL + np.log(full_data.n_samples) * k * (k - 1) / 2 + third_term
+                model_eval_log[k]['MMDL'].append(MMDL)
+            
+            model_dir = f'{results_path}/{k}_states'
+            os.makedirs(model_dir, exist_ok=True)
+            best_realization_path = f'{model_dir}/{k}_states_model'
+            
+            if model_save_metric == 'full_LL':
+                realizations[np.nanargmax(model_eval_log[k][model_save_metric])].save(best_realization_path)
+            else:
+                realizations[np.nanargmin(model_eval_log[k][model_save_metric])].save(best_realization_path) 
+            
+            model_eval_log[k]['best_realization_path'] = best_realization_path
+            with open(model_eval_log_save_path, 'wb') as f:
+                pickle.dump(model_eval_log, f)
+        else:
+            print(f"The model with {k} states has already been evaluated on the full dataset, skipping...")
+    
