@@ -214,7 +214,7 @@ def run_grid_search(model_eval_log, model_eval_log_save_path, hyperparam_grid, s
         model_eval_log_save_path : str
                                    The path at which to save model_eval_log as a pickle. A save is done after the grid search for each k value
         hyperparam_grid          : list[dict]
-                                   Output of get_hyperparam_combinations(). Each combination dictionary must have keys 'k', 'sequence_length', 'learn_means', 'learn_covariances', 'batch_size', 
+                                   Output of get_hyperparam_combinations(). Each combination dictionary must have keys 'k', 'sequence_length', 'learn_means', 'learn_covariances', 'set_regularizers', 'batch_size', 
                                    'learning_rate', 'lr_decay', 'n_epochs', and 'patience'
         seed                     : int
                                    For reproducibility
@@ -261,11 +261,16 @@ def run_grid_search(model_eval_log, model_eval_log_save_path, hyperparam_grid, s
                 )
                     
                 model = Model(config)
+
+                if hyperparams['set_regularizers']:
+                    model.set_regularizers(inner_train)
+                    
                 try:
                     model.random_state_time_course_initialization(inner_train, verbose=0)
                 except ValueError:
                     print("random_state_time_course_initialization can't simulate a state time course where each state activates. Switching to using random_subset_initialization instead.")
                     model.random_subset_initialization(inner_train, verbose=0)
+                    
                 callback = EarlyStopping(monitor='val_loss', patience=hyperparams['patience'], verbose=0) # we don't need restore_best_weights=True because we aren't saving the models
                 history = model.fit(
                     inner_train,
@@ -307,14 +312,16 @@ def plot_cv_loss(model_eval_log, k, split_plan):
     Returns:
         None
     """
+    best_hyperparams_idx = np.nanargmin(np.mean(model_eval_log[k]['test_free_energies'], axis=1))
+    
     for f in range(len(split_plan['outer_test'])):
-        example = model_eval_log[k]['histories'][np.nanargmin(np.mean(model_eval_log[k]['test_free_energies'], axis=1))]
+        example = model_eval_log[k]['histories'][best_hyperparams_idx]
         fig, ax = plt.subplots(1, 1)
         x = range(1, len(example[f]['loss']) + 1)
         ax.plot(x, example[f]['loss'], label="Training Loss", color='blue', linestyle='-')
         ax.plot(x, example[f]['val_loss'], label="Validation Loss", color='orange', linestyle='--')
     
-        ax.set_title(f"{k} States, {str(model_eval_log[k]['hyperparams'][np.nanargmin(np.mean(model_eval_log[k]['test_free_energies'], axis=1))])}\nLowest validation loss achieved: {np.min(example[f]['val_loss']):.3f} at epoch {model_eval_log[k]['best_epochs'][f]}")
+        ax.set_title(f"{k} States, {str(model_eval_log[k]['hyperparams'][best_hyperparams_idx])}\nLowest validation loss achieved: {np.min(example[f]['val_loss']):.3f} at epoch {model_eval_log[k]['best_epochs'][best_hyperparams_idx][f]}")
         ax.set_xlabel("Epoch")
         ax.set_ylabel("Loss (Free Energy)")
         ax.legend()
@@ -452,6 +459,10 @@ def run_full_model_eval(model_eval_log, model_eval_log_save_path, k_values, n_re
                 )
         
                 model = Model(config)
+
+                if best_hyperparams['set_regularizers']:
+                    model.set_regularizers(full_data)
+                
                 try:
                     model.random_state_time_course_initialization(full_data, verbose=0)
                 except ValueError:
