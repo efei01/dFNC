@@ -404,7 +404,7 @@ def hmm_total_loglik(model, dataset):
 
     return total_loglik
     
-def run_full_model_eval(model_eval_log, model_eval_log_save_path, k_values, n_realizations, model_save_metric, results_path, seed, full_data):
+def run_full_model_eval(model_eval_log, model_eval_log_save_path, k_values, n_realizations, model_save_metric, seed, full_data, results_path):
     """
     Args:
         model_eval_log           : dict
@@ -418,12 +418,12 @@ def run_full_model_eval(model_eval_log, model_eval_log_save_path, k_values, n_re
         model_save_metric        : str
                                    'free_energy', 'total_LL' (total log-likelihood), or 'BIC' (Bayesian information criterion).
                                    The realization that scores the best on model_save_metric is saved
-        results_path             : str
-                                   Directory in which to save models
         seed                     : int
                                    For reproducibility
         full_data                : osl_dynamics.data.Data object
                                    The full dataset
+        results_path             : str
+                                   Directory in which to save models
     Returns:
         None
     """
@@ -485,7 +485,7 @@ def run_full_model_eval(model_eval_log, model_eval_log_save_path, k_values, n_re
         
                 means, covs = model.get_means_covariances() 
                 if best_hyperparams['learn_means']:
-                    model_eval_log[k]['realizaations'][r]['means'] = means
+                    model_eval_log[k]['realizations'][r]['means'] = means
                 if best_hyperparams['learn_covariances']:
                     model_eval_log[k]['realizations'][r]['covs'] = covs
             
