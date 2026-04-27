@@ -5,16 +5,14 @@ import os
 import re
 import nibabel as nib
 from sklearn.model_selection import StratifiedKFold, train_test_split
+import math
 import matplotlib.pyplot as plt
-import copy
-from tqdm.auto import tqdm
 import itertools
 import tensorflow as tf
 from tensorflow.keras.callbacks import EarlyStopping
 import pickle
 from osl_dynamics.data import Data, processing
 from osl_dynamics.models.hmm import Config, Model
-import math
 from scipy.special import logsumexp
 from osl_dynamics.models import load
 from osl_dynamics.utils import plotting
@@ -65,18 +63,18 @@ def get_eigenvectors(dFC,n=1):
 
     return LEi
 
-def load_data(data_path, data_prep_method, bad_ICs=None, standardize=True):
+def load_data(data_path, data_prep_method, standardize, bad_ICs=None):
     """
     Args:
         data_path        : str
                            Path to the data
         data_prep_method : str
                            'ICA' or 'LEiDA'
+        standardize      : bool
+                           Whether to standardize the data. If True, each channel (the third dimension of X) is standardized across time. Standardization is typical for ICA. For LEiDA, try without standardization first
         bad_ICs          : list[int]
                            1-based indices of independent components that need to be removed. None by default. Ignored if data_prep_method isn't 'ICA'
                            Note to self: [1, 6, 9, 18] for CIMT/rs, [6, 11, 12, 14] for CIMT/LLstim
-        standardize      : bool
-                           Whether to standardize the data. True by default
     Returns:
         X                : ndarray with shape (n_subjects, n_timepoints, n_channels)
         full_data        : osl_dynamics.data.Data object
@@ -107,12 +105,15 @@ def load_data(data_path, data_prep_method, bad_ICs=None, standardize=True):
         raise ValueError("invalid data_prep_method. Only ICA and LEiDA are supported")
 
     full_data = Data(X)
-    full_data.prepare({
-        "standardize": {},
-    })
+
+    if standardize:
+        full_data.prepare({
+            "standardize": {},
+        })
+        
     return X, full_data
 
-def create_folds(n_splits, X, y, inner_val_size, random_state):
+def create_folds(n_splits, X, y, inner_val_size, random_state, standardize):
     """
     Args:
         n_splits       : int
@@ -126,6 +127,8 @@ def create_folds(n_splits, X, y, inner_val_size, random_state):
                          validation set. inner_val_size is the proportion of the training set reserved for the inner validaton set
         random_state   : int
                          The random_state passed into train_test_split() when splitting the training set into an inner training set and an inner validation set
+        standardize    : bool
+                         Whether to standardize the data. If True, each channel (the third dimension of the osl_dynamics.data.Data objects in split_plan) is standardized across time. Standardization is typical for ICA. For LEiDA, try without standardization first
     Returns:
         split_plan     : dict
                          Keys are 'outer_train', 'outer_test', 'inner_train', and 'inner_val'. Each of the values is a list of length n_splits containing
@@ -159,10 +162,11 @@ def create_folds(n_splits, X, y, inner_val_size, random_state):
         inner_train = Data(inner_train)
         inner_val = Data(inner_val)
 
-        outer_train.prepare({"standardize": {}})
-        outer_test.prepare({"standardize": {}})
-        inner_train.prepare({"standardize": {}})
-        inner_val.prepare({"standardize": {}})
+        if standardize:
+            outer_train.prepare({"standardize": {}})
+            outer_test.prepare({"standardize": {}})
+            inner_train.prepare({"standardize": {}})
+            inner_val.prepare({"standardize": {}})
     
         split_plan['outer_train'].append(outer_train)
         split_plan['outer_test'].append(outer_test)
@@ -171,6 +175,23 @@ def create_folds(n_splits, X, y, inner_val_size, random_state):
 
     return split_plan
 
+def print_n_param_updates_per_epoch(hyperparam_grid, full_data):
+    """
+    Args:
+        hyperparam_grid : dict
+                          Keys are hyperparameter names. Values should be lists containing values of the corresponding hyperparameter that need to be searched. For this function, values for 'sequence_length' and 'batch_size' must be provided
+        full_data       : osl_dynamics.data.Data object
+                          Second output of load_data()
+    Returns:
+        None
+    """
+    if hyperparam_grid['sequence_length'] and hyperparam_grid['batch_size']:
+        for sequence_length in hyperparam_grid['sequence_length']:
+            for batch_size in hyperparam_grid['batch_size']:  
+                print(f"Number of parameter updates per epoch with sequence_length={sequence_length} and batch_size={batch_size}: {math.ceil(full_data.n_samples / (sequence_length * batch_size))}")
+    else:
+        raise ValueError("Either 'sequence_length' or 'batch_size' (or both) is missing. Values for both 'sequence_length' and 'batch_size' must be provided in hyperparam_grid in order to print the number of parameter updates per epoch")
+    
 def get_hyperparam_combinations(hyperparam_grid):
     """
     Args:
@@ -293,7 +314,7 @@ def plot_cv_loss(model_eval_log, k, split_plan):
         ax.plot(x, example[f]['loss'], label="Training Loss", color='blue', linestyle='-')
         ax.plot(x, example[f]['val_loss'], label="Validation Loss", color='orange', linestyle='--')
     
-        ax.set_title(f"{k} States, {str(model_eval_log[k]['hyperparams'][np.nanargmin(np.mean(model_eval_log[k]['test_free_energies'], axis=1))])}\nLowest validation loss achieved: {np.min(example[f]['val_loss']):.3f}")
+        ax.set_title(f"{k} States, {str(model_eval_log[k]['hyperparams'][np.nanargmin(np.mean(model_eval_log[k]['test_free_energies'], axis=1))])}\nLowest validation loss achieved: {np.min(example[f]['val_loss']):.3f} at epoch {model_eval_log[k]['best_epochs'][f]}")
         ax.set_xlabel("Epoch")
         ax.set_ylabel("Loss (Free Energy)")
         ax.legend()
@@ -320,7 +341,7 @@ def hyperparam_performance(model_eval_log, k):
         print(f"{h}: {t:.3f}, took {e:.1f} epochs on average")
 
 # Adapted osl_dynamics.models.inf_mod_base.MarkovStateInferenceModelBase.evidence() to return the full log-likelihood
-def hmm_full_loglik(model, dataset):
+def hmm_total_loglik(model, dataset):
     """
     Args:
         model       : osl_dynamics.models.hmm.Model object
@@ -335,7 +356,7 @@ def hmm_full_loglik(model, dataset):
     log_pi = np.log(model.get_initial_state_probs() + eps) # log p(s_1)
     log_A = np.log(model.get_trans_prob() + eps) # log p(s_t | s_{t-1})
 
-    full_loglik = 0.0
+    total_loglik = 0.0
 
     for batch in ds:
         x = batch["data"]
@@ -346,28 +367,29 @@ def hmm_full_loglik(model, dataset):
 
         batch_size, sequence_length, _ = x.shape # x should have shape (batch_size, sequence_length, n_channels)
 
-        log_filt = None # log p(x_t, s_t∣x_{1:t-1})
+        log_filt = None 
 
         for t in range(sequence_length):
-            if log_filt is None:
+            if log_filt is None: # then initialize distribution for every sequence in the batch
                 log_pred = np.broadcast_to(log_pi[None, :], (batch_size, model.config.n_states)) # log p(s_t | x_{1:t-1})
             else:
-                # shape: (B, n_states_next)
                 log_pred = logsumexp(
-                    log_filt[:, :, None] + log_A[None, :, :],
+                    log_filt[:, :, None] + log_A[None, :, :], # log_filt is expanded to have shape (batch_size, k, 1) and log_A is expanded to have shape (1, k, k). Their sum has shape (batch_size, k, k). logsumexp is taken across states from time t - 1, which are represented by axis 1
                     axis=1,
                 ) # log p(s_t | x_{1:t-1})
 
-            log_B = model.get_log_likelihood(x[:, t:t+1, :])[:, 0, :] # log p(x_t | s_t)
-            log_filt = log_pred + log_B
+            # log_pred has shape (batch_size, k)
+            
+            log_B = model.get_log_likelihood(x[:, t:t+1, :])[:, 0, :] # log p(x_t | s_t). log_B has shape (batch_size, k)
+            log_filt = log_pred + log_B # log p(x_t, s_t∣x_{1:t-1}) (unnormalized). log_filt has shape (batch_size, k)
 
-            log_c = logsumexp(log_filt, axis=1) # log p(x_t | x_{1:t-1})
-            full_loglik += log_c.sum()
+            log_c = logsumexp(log_filt, axis=1) # log p(x_t | x_{1:t-1}). # log_sum_exp is taken across states for each sequence in the batch. log_c has shape (batch_size,)
+            total_loglik += log_c.sum() # sum is taken across sequences in the batch
 
             # normalize for next step
-            log_filt -= log_c[:, None] # log p(s_t | x_{1:t})
+            log_filt -= log_c[:, None] # log p(s_t | x_{1:t}) (normalized). Expand log_c to have shape (batch_size, 1), then broadcast and subtract from log_filt
 
-    return full_loglik
+    return total_loglik
     
 def run_full_model_eval(model_eval_log, model_eval_log_save_path, k_values, n_realizations, model_save_metric, results_path, seed, full_data):
     """
@@ -381,7 +403,7 @@ def run_full_model_eval(model_eval_log, model_eval_log_save_path, k_values, n_re
         n_realizations           : int
                                    Number of models to fit for each k value to account for variance in model initialization
         model_save_metric        : str
-                                   'free_energy', 'full_LL' (full log-likelihood), 'BIC' (Bayesian information criterion), or 'MMDL' (mixture minimum description length).
+                                   'free_energy', 'total_LL' (total log-likelihood), or 'BIC' (Bayesian information criterion).
                                    The realization that scores the best on model_save_metric is saved
         results_path             : str
                                    Directory in which to save models
@@ -397,17 +419,17 @@ def run_full_model_eval(model_eval_log, model_eval_log_save_path, k_values, n_re
         if 'realizations' in model_eval_log[k] and len(model_eval_log[k]['realizations']) < n_realizations:
             del model_eval_log[k]['realizations']
             del model_eval_log[k]['free_energy']
-            del model_eval_log[k]['full_LL'] 
+            del model_eval_log[k]['total_LL'] 
             del model_eval_log[k]['BIC'] 
-            del model_eval_log[k]['MMDL'] 
+            # del model_eval_log[k]['MMDL'] 
         
         if 'realizations' not in model_eval_log[k]:
             model_eval_log[k]['realizations'] = []
             realizations = [] # contains model object from each realization. Models can't be pickled, so we will pick the best realization and save the corresponding model object separately
             model_eval_log[k]['free_energy'] = []
-            model_eval_log[k]['full_LL'] = []
+            model_eval_log[k]['total_LL'] = []
             model_eval_log[k]['BIC'] = []
-            model_eval_log[k]['MMDL'] = []
+            # model_eval_log[k]['MMDL'] = []
             
             random.seed(seed)
             np.random.seed(seed)
@@ -427,7 +449,6 @@ def run_full_model_eval(model_eval_log, model_eval_log_save_path, k_values, n_re
                     learning_rate=best_hyperparams['learning_rate'],
                     lr_decay=best_hyperparams['lr_decay'],
                     n_epochs=math.ceil(np.mean(model_eval_log[k]['best_epochs'][best_hyperparams_idx])),
-                    loss_calc='mean', # to get the average per-timepoint log likelihood when computing test evidence
                 )
         
                 model = Model(config)
@@ -450,22 +471,19 @@ def run_full_model_eval(model_eval_log, model_eval_log_save_path, k_values, n_re
                     model_eval_log[k]['realizations'][r]['covs'] = covs
             
                 off_diags = []
-                """
-                FIGURE OUT DOF
-                """
-                dof = [] # degrees of freedom of inverse covariance matrices (precision matrices), used to compute MMDL
+                # dof = [] # degrees of freedom of inverse covariance matrices (precision matrices), used to compute MMDL
                 for cov in covs:
                     ut = np.triu(cov, k=1) # upper triangle, excluding main diagonal
                     off_diag = ut[ut != 0] # np.triu() returns a full matrix, so filter out lower triangle entries and flatten to a 1-D array
                     off_diags.append(off_diag)
         
-                    precision_matrix = np.linalg.inv(cov)
-                    precision_matrix_ut = np.triu(precision_matrix) # upper triangle, incuding main diagonal
-                    dof.append(np.sum(precision_matrix_ut != 0)) # "Df(k) is the number of non-zeroes in the precision matrix"
+                    # precision_matrix = np.linalg.inv(cov)
+                    # precision_matrix_ut = np.triu(precision_matrix) # upper triangle, incuding main diagonal
+                    # dof.append(np.sum(precision_matrix_ut != 0)) # "Df(k) is the number of non-zeroes in the precision matrix"
             
                 model_eval_log[k]['realizations'][r]['off_diags'] = np.array(off_diags).T # (number of upper triangle entries x k)
                 
-                full_LL = total_loglik(model, full_data)
+                total_LL = total_loglik(model, full_data)
                 model_eval_log[k]['full_LL'].append(full_LL)
             
                 # Compute Bayesian Information Criterion (BIC)
@@ -475,27 +493,29 @@ def run_full_model_eval(model_eval_log, model_eval_log_save_path, k_values, n_re
                     n_estimated_params += k * d # d x 1 mean vector per state
                 if best_hyperparams['learn_covariances']:
                     n_estimated_params += k * (d * (d + 1)) / 2 # d x d covariance matrix per state. Since the covariance is symmetric, we just keep the upper triangle, including the main diagonal, which sums to (d * (d - 1)) / 2 + d = (d * (d - 1) + 2d) / 2 = (d * (d + 1)) / 2 covariance params per state
-                BIC = n_estimated_params * np.log(full_data.n_samples) - 2 * full_LL
+                BIC = n_estimated_params * np.log(full_data.n_samples) - 2 * total_LL
                 model_eval_log[k]['BIC'].append(BIC)
         
-                # Compute Mixture Minimum Description Length (MMDL) 
-                alpha = np.array(model.get_alpha(full_data)) # state probability time courses for each subject (subjects x timepoints x k)
-                third_term = np.sum([np.log(full_data.n_samples * np.sum(alpha[:, :, state_num])) * dof[state_num] for state_num in range(k)]) / 2
-                MMDL = -full_LL + np.log(full_data.n_samples) * k * (k - 1) / 2 + third_term
-                model_eval_log[k]['MMDL'].append(MMDL)
+                # # Compute Mixture Minimum Description Length (MMDL) 
+                # alpha = np.array(model.get_alpha(full_data)) # state probability time courses for each subject. Has shape (n_subjects, n_timepoints, k)
+                # third_term = np.sum([np.log(full_data.n_samples * np.sum(alpha[:, :, state_num])) * dof[state_num] for state_num in range(k)]) / 2
+                # MMDL = -total_LL + np.log(full_data.n_samples) * k * (k - 1) / 2 + third_term
+                # model_eval_log[k]['MMDL'].append(MMDL)
             
             model_dir = f'{results_path}/{k}_states'
             os.makedirs(model_dir, exist_ok=True)
             best_realization_path = f'{model_dir}/{k}_states_model'
-            
-            if model_save_metric == 'full_LL':
+
+            if model_save_metric == 'total_LL':
+                print("Saving model with highest total log-likelihood ...")
                 realizations[np.nanargmax(model_eval_log[k][model_save_metric])].save(best_realization_path)
             else:
+                print(f"Saving model with lowest {model_save_metric} ...")
                 realizations[np.nanargmin(model_eval_log[k][model_save_metric])].save(best_realization_path) 
             
             model_eval_log[k]['best_realization_path'] = best_realization_path
             with open(model_eval_log_save_path, 'wb') as f:
                 pickle.dump(model_eval_log, f)
         else:
-            print(f"The model with {k} states has already been evaluated on the full dataset, skipping...")
+            print(f"The model with {k} states has already been evaluated on the full dataset, skipping ...")
     
