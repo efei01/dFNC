@@ -8,6 +8,7 @@ from sklearn.model_selection import StratifiedKFold, train_test_split
 import math
 import matplotlib.pyplot as plt
 import itertools
+import time
 import tensorflow as tf
 from tensorflow.keras.callbacks import EarlyStopping
 import pickle
@@ -246,6 +247,8 @@ def run_grid_search(model_eval_log, model_eval_log_save_path, hyperparam_grid, s
             best_epochs = []
             test_free_energies = []
             for f in range(len(split_plan['outer_test'])):
+                start = time.perf_counter()
+                
                 print(f"\nFold {f + 1}...")
                 outer_test, inner_train, inner_val = split_plan['outer_test'][f], split_plan['inner_train'][f], split_plan['inner_val'][f]
                 config = Config(
@@ -287,6 +290,9 @@ def run_grid_search(model_eval_log, model_eval_log_save_path, hyperparam_grid, s
                             
                 test_free_energy = model.free_energy(outer_test)
                 test_free_energies.append(test_free_energy)
+
+                end = time.perf_counter()
+                print(f"Time elapsed for this fold: {end - start:.3f} seconds")
         
             model_eval_log[k]['hyperparams'].append(hyperparams)
             model_eval_log[k]['histories'].append(histories)
@@ -442,6 +448,8 @@ def run_full_model_eval(model_eval_log, model_eval_log_save_path, k_values, n_re
             np.random.seed(seed)
             
             for r in range(n_realizations): # account for variability in .random_state_time_course_initialization(), then average later
+                start = time.perf_counter()
+                
                 print(f"Realization {r + 1}:")
                 model_eval_log[k]['realizations'].append({})
                 best_hyperparams_idx = np.nanargmin(np.mean(model_eval_log[k]['test_free_energies'], axis=1))
@@ -512,6 +520,9 @@ def run_full_model_eval(model_eval_log, model_eval_log_save_path, k_values, n_re
                 # third_term = np.sum([np.log(full_data.n_samples * np.sum(alpha[:, :, state_num])) * dof[state_num] for state_num in range(k)]) / 2
                 # MMDL = -total_LL + np.log(full_data.n_samples) * k * (k - 1) / 2 + third_term
                 # model_eval_log[k]['MMDL'].append(MMDL)
+
+                end = time.perf_counter()
+                print(f"Time elapsed for this realization: {end - start:.3f} seconds")
             
             model_dir = f'{results_path}/{k}_states'
             os.makedirs(model_dir, exist_ok=True)
