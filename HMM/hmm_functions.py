@@ -502,8 +502,8 @@ def run_full_model_eval(model_eval_log, model_eval_log_save_path, k_values, n_re
             
                 model_eval_log[k]['realizations'][r]['off_diags'] = np.array(off_diags).T # (number of upper triangle entries x k)
                 
-                total_LL = total_loglik(model, full_data)
-                model_eval_log[k]['full_LL'].append(full_LL)
+                total_LL = hmm_total_loglik(model, full_data)
+                model_eval_log[k]['total_LL'].append(total_LL)
             
                 # Compute Bayesian Information Criterion (BIC)
                 d = full_data.n_channels
