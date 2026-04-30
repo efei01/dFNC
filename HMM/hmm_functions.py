@@ -64,7 +64,7 @@ def get_eigenvectors(dFC,n=1):
 
     return LEi
 
-def load_data(data_path, data_prep_method, standardize, bad_ICs=None):
+def load_data(data_path: str, data_prep_method: str, standardize: bool, bad_ICs: list[int] | None = None):
     """
     Args:
         data_path        : str
@@ -114,7 +114,7 @@ def load_data(data_path, data_prep_method, standardize, bad_ICs=None):
         
     return X, full_data
 
-def create_folds(n_splits, X, y, inner_val_size, random_state, standardize):
+def create_folds(n_splits: int, X, y, inner_val_size: float, random_state: int, standardize: bool):
     """
     Args:
         n_splits       : int
@@ -176,7 +176,7 @@ def create_folds(n_splits, X, y, inner_val_size, random_state, standardize):
 
     return split_plan
 
-def print_n_param_updates_per_epoch(hyperparam_grid, full_data):
+def print_n_param_updates_per_epoch(hyperparam_grid: dict[str, list[float]], full_data):
     """
     Args:
         hyperparam_grid : dict
@@ -193,7 +193,7 @@ def print_n_param_updates_per_epoch(hyperparam_grid, full_data):
     else:
         raise ValueError("Either 'sequence_length' or 'batch_size' (or both) is missing. Values for both 'sequence_length' and 'batch_size' must be provided in hyperparam_grid in order to print the number of parameter updates per epoch")
     
-def get_hyperparam_combinations(hyperparam_grid):
+def get_hyperparam_combinations(hyperparam_grid: dict):
     """
     Args:
         hyperparam_grid         : dict
@@ -207,7 +207,7 @@ def get_hyperparam_combinations(hyperparam_grid):
     hyperparam_combinations = [dict(zip(hyperparam_grid.keys(), combination)) for combination in combinations]
     return hyperparam_combinations
 
-def run_grid_search(model_eval_log, model_eval_log_save_path, hyperparam_grid, seed, split_plan):
+def run_grid_search(model_eval_log: dict, model_eval_log_save_path: str, hyperparam_grid: list[dict], seed: int, split_plan: dict):
     """
     Args:
         model_eval_log           : dict
@@ -306,14 +306,14 @@ def run_grid_search(model_eval_log, model_eval_log_save_path, hyperparam_grid, s
         with open(model_eval_log_save_path, 'wb') as f:
             pickle.dump(model_eval_log, f)
 
-def plot_cv_loss(model_eval_log, k, split_plan):
+def plot_cv_loss(model_eval_log: dict, k: int split_plan: dict):
     """
     Args:
         model_eval_log : dict
                          model_eval_log as modified by run_grid_search()
         k              : int
                          k value for which to plot the training and validation loss curves of optimal hyperparameters
-        split_plan     : int
+        split_plan     : dict
                          Output of create_folds()
     Returns:
         None
@@ -333,7 +333,7 @@ def plot_cv_loss(model_eval_log, k, split_plan):
         ax.legend()
         plt.show()
 
-def hyperparam_performance(model_eval_log, k):
+def hyperparam_performance(model_eval_log: dict, k: int):
     """
     Args:
         model_eval_log : dict
@@ -404,7 +404,7 @@ def hmm_total_loglik(model, dataset):
 
     return total_loglik
     
-def run_full_model_eval(model_eval_log, model_eval_log_save_path, k_values, n_realizations, model_save_metric, seed, full_data, results_path):
+def run_full_model_eval(model_eval_log: dict, model_eval_log_save_path: str, k_values: list[int], n_realizations: int, model_save_metric: str, seed: int, full_data, results_path: str):
     """
     Args:
         model_eval_log           : dict
@@ -540,4 +540,26 @@ def run_full_model_eval(model_eval_log, model_eval_log_save_path, k_values, n_re
                 pickle.dump(model_eval_log, f)
         else:
             print(f"The model with {k} states has already been evaluated on the full dataset, skipping ...")
+
+def plot_state_time_course(subj_tc, n_samples: int, cmap: str, title: str, add_stim_times: list[int] | None = None)
+    """
+    Args:
+        subj_tc    : ndarray with shape (n_timepoints, k)
+                     The state time course of the subject of interest
+        n_samples  : int
+                     How many time points to plot
+        cmap       : str
+                     The Matplotlib colormap
+        title      : str
+                     The title of the plot
+        stim_times : list[int]
+                     The time points of stimulation/task, if relevant
+    Returns:
+        None
+    """
+    fig, ax = plotting.plot_alpha(subj_tc, n_samples=n_samples, cmap=cmap, title=title)
     
+    if stim_times:
+        for i in range(len(stim_times)):
+            if stim_times[i]:
+                ax[0].plot(i, 0, color='black', marker='o')
