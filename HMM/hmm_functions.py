@@ -295,7 +295,9 @@ def run_grid_search(model_eval_log: dict, model_eval_log_save_path: str, hyperpa
                 test_free_energies.append(test_free_energy)
 
                 end = time.perf_counter()
-                print(f"Time elapsed for this fold: {end - start:.3f} seconds")
+                time_elapsed = math.ceil(end - start)
+                min_elapsed, sec_elapsed = divmod(time_elapsed, 60)
+                print(f"Time elapsed for this realization: {min_elapsed} min. {sec_elapsed} sec.")
         
             model_eval_log[k]['hyperparams'].append(hyperparams)
             model_eval_log[k]['histories'].append(histories)
@@ -525,7 +527,9 @@ def run_full_model_eval(model_eval_log: dict, model_eval_log_save_path: str, k_v
                 # model_eval_log[k]['MMDL'].append(MMDL)
 
                 end = time.perf_counter()
-                print(f"Time elapsed for this realization: {end - start:.3f} seconds")
+                time_elapsed = math.ceil(end - start)
+                min_elapsed, sec_elapsed = divmod(time_elapsed, 60)
+                print(f"Time elapsed for this realization: {min_elapsed} min. {sec_elapsed} sec.")
             
             model_dir = f'{results_path}/{k}_states'
             os.makedirs(model_dir, exist_ok=True)
