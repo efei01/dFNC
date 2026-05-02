@@ -207,6 +207,9 @@ def get_hyperparam_combinations(hyperparam_grid: dict):
     hyperparam_combinations = [dict(zip(hyperparam_grid.keys(), combination)) for combination in combinations]
     return hyperparam_combinations
 
+"""
+MIGHT BE BIASED, WILL FIX LATER
+"""
 def run_grid_search(model_eval_log: dict, model_eval_log_save_path: str, hyperparam_grid: list[dict], seed: int, split_plan: dict):
     """
     Args:
@@ -306,7 +309,7 @@ def run_grid_search(model_eval_log: dict, model_eval_log_save_path: str, hyperpa
         with open(model_eval_log_save_path, 'wb') as f:
             pickle.dump(model_eval_log, f)
 
-def plot_cv_loss(model_eval_log: dict, k: int split_plan: dict):
+def plot_cv_loss(model_eval_log: dict, k: int, split_plan: dict):
     """
     Args:
         model_eval_log : dict
@@ -541,7 +544,7 @@ def run_full_model_eval(model_eval_log: dict, model_eval_log_save_path: str, k_v
         else:
             print(f"The model with {k} states has already been evaluated on the full dataset, skipping ...")
 
-def plot_state_time_course(subj_tc, n_samples: int, cmap: str, title: str, add_stim_times: list[int] | None = None)
+def plot_state_time_course(subj_tc, n_samples: int, cmap: str, title: str, stim_times: list[int] | None = None):
     """
     Args:
         subj_tc    : ndarray with shape (n_timepoints, k)
@@ -563,3 +566,63 @@ def plot_state_time_course(subj_tc, n_samples: int, cmap: str, title: str, add_s
         for i in range(len(stim_times)):
             if stim_times[i]:
                 ax[0].plot(i, 0, color='black', marker='o')
+
+def get_mean_phase_coherences(phase_coherence, full_data, stc):
+    """
+    Args:
+        phase_coherence       : ndarray with shape (n_subjects, n_timepoints, n_channels, n_channels)
+                                The raw phase coherence data used to create X
+        full_data             : osl_dynamics.data.Data object
+                                Second output of load_data()
+        stc                   : ndarray with shape (n_subjects, n_timepoints, k)
+                                For each subject and timepoint, the ith state, 1 <= i <= k, is 1 if it is active (as determined by the HMM) and 0 otherwise
+    Returns:
+        mean_phase_coherences : ndarray with shape (k, n_channels, n_channels)
+                                The mean phase coherence matrix of all the timepoints across all subjects assigned to each state
+    """
+    k = stc.shape[2]
+    
+    phase_coherence_flattened = np.reshape(
+        phase_coherence, 
+        (full_data.n_samples, phase_coherence.shape[2], phase_coherence.shape[3])
+    )
+    stc_flattened = np.reshape(
+        stc,
+        (full_data.n_samples, k)
+    )
+    
+    mean_phase_coherences = []
+
+    for state_num in range(k):
+        assignment_idx = stc_flattened[:, state_num] == 1
+        mean_phase_coherences.append(np.mean(phase_coherence_flattened[assignment_idx], axis=0))
+
+    return np.array(mean_phase_coherences)
+
+def leida_sanity_check(mean_phase_coherences, state_means, figsize: tuple):
+    """
+    Args:
+        mean_phase_coherences : ndarray with shape (k, n_channels, n_channels)
+                                The output of get_mean_phase_coherences()
+        state_means           : ndarray with shape (k, n_channels)
+                                The Gaussian mean vectors of the states learned by the HMM
+        figsize               : tuple with length 2
+                                The fig_size of each Matplotlib subplot
+    Returns:
+        outer_products        : ndarray with shape (k, n_channels, n_channels)
+                                The rank-1 approximation of the phase coherence of each state
+    """
+    outer_products = []
+
+    for state_num in range(mean_phase_coherences.shape[0]):
+        outer_products.append(np.outer(state_means[state_num], state_means[state_num]))
+    
+        fig, axs = plt.subplots(1, 2, figsize=figsize)
+        axs[0].imshow(mean_phase_coherences[state_num])
+        axs[0].set_title("Mean Phase Coherence")
+        axs[1].imshow(outer_products[state_num])
+        axs[1].set_title("Rank-1 Approx. of Phase Coherence")
+        plt.suptitle(f"State {state_num + 1}")
+        plt.show()
+
+    return np.array(outer_products)
