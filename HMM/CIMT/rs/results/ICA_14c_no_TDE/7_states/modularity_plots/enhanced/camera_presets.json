@@ -1,0 +1,218 @@
+{
+  "anterior": {
+    "name": "Anterior (Front)",
+    "eye": {
+      "x": 0,
+      "y": 2,
+      "z": 0
+    },
+    "center": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "up": {
+      "x": 0,
+      "y": 0,
+      "z": 1
+    }
+  },
+  "posterior": {
+    "name": "Posterior (Back)",
+    "eye": {
+      "x": 0,
+      "y": -2,
+      "z": 0
+    },
+    "center": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "up": {
+      "x": 0,
+      "y": 0,
+      "z": 1
+    }
+  },
+  "left": {
+    "name": "Left Lateral",
+    "eye": {
+      "x": -2,
+      "y": 0,
+      "z": 0
+    },
+    "center": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "up": {
+      "x": 0,
+      "y": 0,
+      "z": 1
+    }
+  },
+  "right": {
+    "name": "Right Lateral",
+    "eye": {
+      "x": 2,
+      "y": 0,
+      "z": 0
+    },
+    "center": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "up": {
+      "x": 0,
+      "y": 0,
+      "z": 1
+    }
+  },
+  "superior": {
+    "name": "Superior (Top)",
+    "eye": {
+      "x": 0,
+      "y": 0,
+      "z": 2
+    },
+    "center": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "up": {
+      "x": 0,
+      "y": 1,
+      "z": 0
+    }
+  },
+  "inferior": {
+    "name": "Inferior (Bottom)",
+    "eye": {
+      "x": 0,
+      "y": 0,
+      "z": -2
+    },
+    "center": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "up": {
+      "x": 0,
+      "y": -1,
+      "z": 0
+    }
+  },
+  "anterolateral_left": {
+    "name": "Anterolateral Left",
+    "eye": {
+      "x": -1.5,
+      "y": 1.5,
+      "z": 0.5
+    },
+    "center": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "up": {
+      "x": 0,
+      "y": 0,
+      "z": 1
+    }
+  },
+  "anterolateral_right": {
+    "name": "Anterolateral Right",
+    "eye": {
+      "x": 1.5,
+      "y": 1.5,
+      "z": 0.5
+    },
+    "center": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "up": {
+      "x": 0,
+      "y": 0,
+      "z": 1
+    }
+  },
+  "posterolateral_left": {
+    "name": "Posterolateral Left",
+    "eye": {
+      "x": -1.5,
+      "y": -1.5,
+      "z": 0.5
+    },
+    "center": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "up": {
+      "x": 0,
+      "y": 0,
+      "z": 1
+    }
+  },
+  "posterolateral_right": {
+    "name": "Posterolateral Right",
+    "eye": {
+      "x": 1.5,
+      "y": -1.5,
+      "z": 0.5
+    },
+    "center": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "up": {
+      "x": 0,
+      "y": 0,
+      "z": 1
+    }
+  },
+  "oblique": {
+    "name": "Oblique View",
+    "eye": {
+      "x": 1.5,
+      "y": 1.5,
+      "z": 1.5
+    },
+    "center": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "up": {
+      "x": 0,
+      "y": 0,
+      "z": 1
+    }
+  },
+  "custom": {
+    "name": "Custom View",
+    "eye": {
+      "x": 1.5,
+      "y": 1.5,
+      "z": 1.5
+    },
+    "center": {
+      "x": 0,
+      "y": 0,
+      "z": 0
+    },
+    "up": {
+      "x": 0,
+      "y": 0,
+      "z": 1
+    }
+  }
+}

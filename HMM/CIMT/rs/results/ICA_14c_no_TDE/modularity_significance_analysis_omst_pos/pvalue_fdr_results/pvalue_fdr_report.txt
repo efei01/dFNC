@@ -1,0 +1,222 @@
+================================================================================
+P-VALUE AND FDR CORRECTION REPORT
+================================================================================
+
+Analysis Date: 2026-03-11 03:08:13.304738
+Total permutations: 10,000
+FDR methods: Benjamini-Hochberg, Benjamini-Yekutieli, Bonferroni
+Alpha levels tested: 0.05, 0.01, 0.001
+
+RESULTS BY K VALUE
+================================================================================
+
+k = 2 clusters
+----------------------------------------
+States with significant overall Q (p<0.05): 2/2
+States with highly significant overall Q (p<0.001): 0/2
+Mean Q p-value: 0.0099
+
+Module-level significance (average across states):
+  Uncorrected (p<0.05): 5.0 modules
+  FDR-corrected (q<0.05): 5.0 modules
+  FDR-corrected (q<0.01): 5.0 modules
+  FDR-corrected (q<0.001): 0.0 modules
+  Bonferroni (p<0.05): 5.0 modules
+
+k = 3 clusters
+----------------------------------------
+States with significant overall Q (p<0.05): 3/3
+States with highly significant overall Q (p<0.001): 0/3
+Mean Q p-value: 0.0099
+
+Module-level significance (average across states):
+  Uncorrected (p<0.05): 6.0 modules
+  FDR-corrected (q<0.05): 6.0 modules
+  FDR-corrected (q<0.01): 6.0 modules
+  FDR-corrected (q<0.001): 0.0 modules
+  Bonferroni (p<0.05): 1.7 modules
+
+k = 4 clusters
+----------------------------------------
+States with significant overall Q (p<0.05): 4/4
+States with highly significant overall Q (p<0.001): 0/4
+Mean Q p-value: 0.0099
+
+Module-level significance (average across states):
+  Uncorrected (p<0.05): 6.0 modules
+  FDR-corrected (q<0.05): 6.0 modules
+  FDR-corrected (q<0.01): 6.0 modules
+  FDR-corrected (q<0.001): 0.0 modules
+  Bonferroni (p<0.05): 0.0 modules
+
+k = 5 clusters
+----------------------------------------
+States with significant overall Q (p<0.05): 5/5
+States with highly significant overall Q (p<0.001): 0/5
+Mean Q p-value: 0.0099
+
+Module-level significance (average across states):
+  Uncorrected (p<0.05): 5.6 modules
+  FDR-corrected (q<0.05): 5.6 modules
+  FDR-corrected (q<0.01): 5.6 modules
+  FDR-corrected (q<0.001): 0.0 modules
+  Bonferroni (p<0.05): 2.0 modules
+
+k = 6 clusters
+----------------------------------------
+States with significant overall Q (p<0.05): 6/6
+States with highly significant overall Q (p<0.001): 0/6
+Mean Q p-value: 0.0099
+
+Module-level significance (average across states):
+  Uncorrected (p<0.05): 5.5 modules
+  FDR-corrected (q<0.05): 5.5 modules
+  FDR-corrected (q<0.01): 5.5 modules
+  FDR-corrected (q<0.001): 0.0 modules
+  Bonferroni (p<0.05): 1.5 modules
+
+k = 7 clusters
+----------------------------------------
+States with significant overall Q (p<0.05): 7/7
+States with highly significant overall Q (p<0.001): 0/7
+Mean Q p-value: 0.0099
+
+Module-level significance (average across states):
+  Uncorrected (p<0.05): 6.3 modules
+  FDR-corrected (q<0.05): 6.3 modules
+  FDR-corrected (q<0.01): 6.3 modules
+  FDR-corrected (q<0.001): 0.0 modules
+  Bonferroni (p<0.05): 0.0 modules
+
+k = 8 clusters
+----------------------------------------
+States with significant overall Q (p<0.05): 8/8
+States with highly significant overall Q (p<0.001): 0/8
+Mean Q p-value: 0.0099
+
+Module-level significance (average across states):
+  Uncorrected (p<0.05): 6.0 modules
+  FDR-corrected (q<0.05): 6.0 modules
+  FDR-corrected (q<0.01): 6.0 modules
+  FDR-corrected (q<0.001): 0.0 modules
+  Bonferroni (p<0.05): 0.0 modules
+
+k = 9 clusters
+----------------------------------------
+States with significant overall Q (p<0.05): 9/9
+States with highly significant overall Q (p<0.001): 0/9
+Mean Q p-value: 0.0099
+
+Module-level significance (average across states):
+  Uncorrected (p<0.05): 6.0 modules
+  FDR-corrected (q<0.05): 6.0 modules
+  FDR-corrected (q<0.01): 6.0 modules
+  FDR-corrected (q<0.001): 0.0 modules
+  Bonferroni (p<0.05): 1.1 modules
+
+k = 10 clusters
+----------------------------------------
+States with significant overall Q (p<0.05): 10/10
+States with highly significant overall Q (p<0.001): 0/10
+Mean Q p-value: 0.0099
+
+Module-level significance (average across states):
+  Uncorrected (p<0.05): 5.7 modules
+  FDR-corrected (q<0.05): 5.7 modules
+  FDR-corrected (q<0.01): 5.7 modules
+  FDR-corrected (q<0.001): 0.0 modules
+  Bonferroni (p<0.05): 2.0 modules
+
+k = 11 clusters
+----------------------------------------
+States with significant overall Q (p<0.05): 11/11
+States with highly significant overall Q (p<0.001): 0/11
+Mean Q p-value: 0.0099
+
+Module-level significance (average across states):
+  Uncorrected (p<0.05): 5.8 modules
+  FDR-corrected (q<0.05): 5.8 modules
+  FDR-corrected (q<0.01): 5.8 modules
+  FDR-corrected (q<0.001): 0.0 modules
+  Bonferroni (p<0.05): 1.4 modules
+
+k = 12 clusters
+----------------------------------------
+States with significant overall Q (p<0.05): 12/12
+States with highly significant overall Q (p<0.001): 0/12
+Mean Q p-value: 0.0099
+
+Module-level significance (average across states):
+  Uncorrected (p<0.05): 6.2 modules
+  FDR-corrected (q<0.05): 6.2 modules
+  FDR-corrected (q<0.01): 6.2 modules
+  FDR-corrected (q<0.001): 0.0 modules
+  Bonferroni (p<0.05): 0.8 modules
+
+k = 13 clusters
+----------------------------------------
+States with significant overall Q (p<0.05): 13/13
+States with highly significant overall Q (p<0.001): 0/13
+Mean Q p-value: 0.0099
+
+Module-level significance (average across states):
+  Uncorrected (p<0.05): 5.8 modules
+  FDR-corrected (q<0.05): 5.8 modules
+  FDR-corrected (q<0.01): 5.8 modules
+  FDR-corrected (q<0.001): 0.0 modules
+  Bonferroni (p<0.05): 1.5 modules
+
+k = 14 clusters
+----------------------------------------
+States with significant overall Q (p<0.05): 14/14
+States with highly significant overall Q (p<0.001): 0/14
+Mean Q p-value: 0.0099
+
+Module-level significance (average across states):
+  Uncorrected (p<0.05): 5.9 modules
+  FDR-corrected (q<0.05): 5.9 modules
+  FDR-corrected (q<0.01): 5.9 modules
+  FDR-corrected (q<0.001): 0.0 modules
+  Bonferroni (p<0.05): 1.4 modules
+
+
+TOP CONFIGURATIONS BY P-VALUE
+================================================================================
+k=2, State 0: p=9.9010e-03, Q=0.601, FDR modules=5/5
+k=2, State 1: p=9.9010e-03, Q=0.648, FDR modules=5/5
+k=3, State 0: p=9.9010e-03, Q=0.638, FDR modules=6/6
+k=3, State 1: p=9.9010e-03, Q=0.584, FDR modules=7/7
+k=3, State 2: p=9.9010e-03, Q=0.647, FDR modules=5/5
+k=4, State 0: p=9.9010e-03, Q=0.623, FDR modules=6/6
+k=4, State 1: p=9.9010e-03, Q=0.579, FDR modules=6/6
+k=4, State 2: p=9.9010e-03, Q=0.659, FDR modules=6/6
+k=4, State 3: p=9.9010e-03, Q=0.632, FDR modules=6/6
+k=5, State 0: p=9.9010e-03, Q=0.602, FDR modules=6/6
+
+
+FDR CORRECTION COMPARISON
+================================================================================
+Average reduction in significant findings after correction:
+
+Total significant modules:
+  Uncorrected (p<0.05): 612
+  FDR-BH (q<0.05): 612 (100.0% retained)
+  FDR-BH (q<0.01): 612 (100.0% retained)
+  Bonferroni (p<0.05): 129 (21.1% retained)
+
+
+INTERPRETATION GUIDE
+================================================================================
+P-values: Exact permutation-based p-values (more reliable than z-scores)
+  - Calculated as (# null values >= observed + 1) / (# permutations + 1)
+
+FDR (False Discovery Rate) correction:
+  - Controls expected proportion of false positives among rejected hypotheses
+  - Benjamini-Hochberg: Standard FDR control
+  - Benjamini-Yekutieli: Conservative FDR for dependent tests
+  - Bonferroni: Most conservative, controls family-wise error rate
+
+Recommendations:
+  - Use FDR q<0.05 for exploratory analysis
+  - Use FDR q<0.01 for confirmatory analysis
+  - Use Bonferroni for strict control when few tests

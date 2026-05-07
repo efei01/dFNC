@@ -16,7 +16,10 @@ HMM/test_k9_enhanced_final_v2 stim z scored corrected testing module v4.py
 HMM/omst_average_matrices.ipynb
 HMM/omst_filter.py
 HMM/run_omst_single_matrix.m
-HMM/CIMT/
+HMM/CIMT/LLstim
+HMM/CIMT/omst_filter_matrices_ICA
+HMM/RLstim
+HMM/rs
 HMM/FPI/
 BrainSpace_Gradient.ipynb
 CIMT_TimePoint_Comparison.ipynb
