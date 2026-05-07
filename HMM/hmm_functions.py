@@ -630,3 +630,4 @@ def leida_sanity_check(mean_phase_coherences, state_means, figsize: tuple):
         plt.show()
 
     return np.array(outer_products)
+
