@@ -277,7 +277,7 @@ def run_grid_search(model_eval_log: dict, model_eval_log_save_path: str, hyperpa
                     print("random_state_time_course_initialization can't simulate a state time course where each state activates. Switching to using random_subset_initialization instead.")
                     model.random_subset_initialization(inner_train, verbose=0)
                     
-                callback = EarlyStopping(monitor='val_loss', patience=hyperparams['patience'], verbose=0) # we don't need restore_best_weights=True because we aren't saving the models
+                callback = EarlyStopping(monitor='val_loss', patience=hyperparams['patience'], verbose=0) 
                 history = model.fit(
                     inner_train,
                     validation_data=inner_val.dataset(
@@ -289,9 +289,9 @@ def run_grid_search(model_eval_log: dict, model_eval_log_save_path: str, hyperpa
                 )
                         
                 histories.append(history)
-                best_epochs.append(np.argmin(history['val_loss']) + 1)
+                best_epochs.append(np.argmin(history['val_loss']) + 1) # might be too low when fitting on full data. Maybe should save len(history) instead for flexibility
                             
-                test_free_energy = model.free_energy(outer_test)
+                test_free_energy = model.free_energy(outer_test) # should refit model on outer_train before this
                 test_free_energies.append(test_free_energy)
 
                 end = time.perf_counter()
