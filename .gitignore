@@ -18,8 +18,8 @@ HMM/omst_filter.py
 HMM/run_omst_single_matrix.m
 HMM/CIMT/LLstim
 HMM/CIMT/omst_filter_matrices_ICA
-HMM/RLstim
-HMM/rs
+HMM/CIMT/RLstim
+HMM/CIMT/rs
 HMM/FPI/
 BrainSpace_Gradient.ipynb
 CIMT_TimePoint_Comparison.ipynb
