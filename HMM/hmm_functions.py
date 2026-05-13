@@ -25,7 +25,7 @@ import seaborn as sns
 from scipy.stats import mannwhitneyu, kruskal, f_oneway, permutation_test
 
 # Adapted get_eigenvectors() from github.com/PSYMARKER/leida-python/tree/master/pyleida/signal_tools/_signal_tools.py
-def get_eigenvectors(dFC,n=1):
+def get_eigenvectors(dFC, n=1):
     """
     For a given subject, extract the leading
     eigenvector of each phase-coherence connectivity
