@@ -2,7 +2,7 @@
 *__pycache__/
 .ipynb_checkpoints/
 CIMT_data/
-FPI_RS_share/
+FPI_data/
 caltech/
 bipartitions code package/
 RABIES_tutorial/
@@ -21,6 +21,7 @@ HMM/CIMT/omst_filter_matrices_ICA
 HMM/CIMT/RLstim
 HMM/CIMT/rs
 HMM/FPI/
+_stats.py
 BrainSpace_Gradient.ipynb
 CIMT_TimePoint_Comparison.ipynb
 expanded modularity pipeline - Stim_v2 white matter corrected.ipynb
