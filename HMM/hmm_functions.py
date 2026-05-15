@@ -217,9 +217,8 @@ def run_grid_search(model_eval_log: dict, model_eval_log_save_path: str, hyperpa
                                    Can be empty or not. Will be modified by this function
         model_eval_log_save_path : str
                                    The path at which to save model_eval_log as a pickle. A save is done after the grid search for each k value
-        hyperparam_grid          : list[dict]
-                                   Output of get_hyperparam_combinations(). Each combination dictionary must have keys 'k', 'sequence_length', 'learn_means', 'learn_covariances', 'set_regularizers', 'batch_size', 
-                                   'learning_rate', 'lr_decay', 'n_epochs', and 'patience'
+        hyperparam_grid          : dict
+                                   Keys are hyperparameter names. Values should be lists containing values of the corresponding hyperparameter that need to be searched. Each combination dictionary must have keys 'k', 'sequence_length', 'learn_means', 'learn_covariances', 'set_regularizers', 'batch_size', 'learning_rate', 'lr_decay', 'n_epochs', and 'patience'
         seed                     : int
                                    For reproducibility
         split_plan               : dict
@@ -227,9 +226,8 @@ def run_grid_search(model_eval_log: dict, model_eval_log_save_path: str, hyperpa
     Returns:
         None
     """
-    i = 1
-    for hyperparams in get_hyperparam_combinations(hyperparam_grid):
-        print(f"\nHyperparam set {i}: {hyperparams}")
+    for i, hyperparams in enumerate(get_hyperparam_combinations(hyperparam_grid)):
+        print(f"\nHyperparam set {i + }: {hyperparams}")
 
         random.seed(seed)
         np.random.seed(seed)
@@ -242,13 +240,13 @@ def run_grid_search(model_eval_log: dict, model_eval_log_save_path: str, hyperpa
                 'hyperparams': [], # [{hyperparams}]
                 'histories': [], # [[history object from best run for each fold]]
                 'best_epochs': [], # [[the best training epoch for each fold]]
-                'test_free_energies': [], # [[float]]
+                'outer_free_energies': [], # [[float]]
             }
         
         if hyperparams not in model_eval_log[k]['hyperparams']:
             histories = []
             best_epochs = []
-            test_free_energies = []
+            outer_free_energies = []
             for f in range(len(split_plan['outer_test'])):
                 start = time.perf_counter()
                 
@@ -291,8 +289,8 @@ def run_grid_search(model_eval_log: dict, model_eval_log_save_path: str, hyperpa
                 histories.append(history)
                 best_epochs.append(np.argmin(history['val_loss']) + 1) # might be too low when fitting on full data. Maybe should save len(history) instead for flexibility
                             
-                test_free_energy = model.free_energy(outer_test) # should refit model on outer_train before this
-                test_free_energies.append(test_free_energy)
+                outer_free_energy = model.free_energy(outer_test) # should refit model on outer_train before this
+                outer_free_energies.append(test_free_energy)
 
                 end = time.perf_counter()
                 time_elapsed = math.ceil(end - start)
@@ -302,11 +300,9 @@ def run_grid_search(model_eval_log: dict, model_eval_log_save_path: str, hyperpa
             model_eval_log[k]['hyperparams'].append(hyperparams)
             model_eval_log[k]['histories'].append(histories)
             model_eval_log[k]['best_epochs'].append(best_epochs) # can take the mean across folds later (make sure to take the ceiling of the mean)
-            model_eval_log[k]['test_free_energies'].append(test_free_energies) # can take the mean across folds later
+            model_eval_log[k]['outer_free_energies'].append(outer_free_energies) # can take the mean across folds later
         else:
-            print(f"Hyperparam set {i} has already been evaluated, skipping...")
-            
-        i += 1
+            print(f"Hyperparam set {i + 1} has already been evaluated, skipping...")
     
         with open(model_eval_log_save_path, 'wb') as f:
             pickle.dump(model_eval_log, f)
@@ -323,7 +319,7 @@ def plot_cv_loss(model_eval_log: dict, k: int, split_plan: dict):
     Returns:
         None
     """
-    best_hyperparams_idx = np.nanargmin(np.mean(model_eval_log[k]['test_free_energies'], axis=1))
+    best_hyperparams_idx = np.nanargmin(np.mean(model_eval_log[k]['outer_free_energies'], axis=1))
     
     for f in range(len(split_plan['outer_test'])):
         example = model_eval_log[k]['histories'][best_hyperparams_idx]
@@ -351,7 +347,7 @@ def hyperparam_performance(model_eval_log: dict, k: int):
     for h, t, e in sorted(
         zip(
             model_eval_log[k]['hyperparams'], 
-            np.mean(model_eval_log[k]['test_free_energies'], axis=1), 
+            np.mean(model_eval_log[k]['outer_free_energies'], axis=1), 
             np.mean(model_eval_log[k]['best_epochs'], axis=1)
         ), 
         key=lambda x: x[1]
@@ -457,7 +453,7 @@ def run_full_model_eval(model_eval_log: dict, model_eval_log_save_path: str, k_v
                 
                 print(f"Realization {r + 1}:")
                 model_eval_log[k]['realizations'].append({})
-                best_hyperparams_idx = np.nanargmin(np.mean(model_eval_log[k]['test_free_energies'], axis=1))
+                best_hyperparams_idx = np.nanargmin(np.mean(model_eval_log[k]['outer_free_energies'], axis=1))
                 best_hyperparams = model_eval_log[k]['hyperparams'][best_hyperparams_idx]
                 config = Config(
                     n_states=k,
