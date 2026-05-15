@@ -5,7 +5,6 @@ import os
 import re
 import nibabel as nib
 from sklearn.model_selection import StratifiedKFold, train_test_split
-import math
 import matplotlib.pyplot as plt
 import itertools
 import time
@@ -132,14 +131,14 @@ def create_folds(n_splits: int, X, y, inner_val_size: float, random_state: int, 
                          Whether to standardize the data. If True, each channel (the third dimension of the osl_dynamics.data.Data objects in split_plan) is standardized across time. Standardization is typical for ICA. For LEiDA, try without standardization first
     Returns:
         split_plan     : dict
-                         Keys are 'outer_train', 'outer_test', 'inner_train', and 'inner_val'. Each of the values is a list of length n_splits containing
+                         Keys are 'outer_train', 'outer_val', 'inner_train', and 'inner_val'. Each of the values is a list of length n_splits containing
                          osl_dynamics.data.Data objects
     """
     skf = StratifiedKFold(n_splits=n_splits)
 
     split_plan = {
         'outer_train': [],
-        'outer_test': [],
+        'outer_val': [],
         'inner_train': [],
         'inner_val': [],
     }
@@ -149,7 +148,7 @@ def create_folds(n_splits: int, X, y, inner_val_size: float, random_state: int, 
         print(f"  Train: index={train_index}")
         print(f"  Test:  index={test_index}")
         
-        outer_train, outer_test, y_train, y_test = X[train_index,], X[test_index,], y[train_index,], y[test_index,]
+        outer_train, outer_val, y_train, y_test = X[train_index,], X[test_index,], y[train_index,], y[test_index,]
         inner_train, inner_val, y_inner_train, y_inner_val = train_test_split(
             outer_train, 
             y_train, 
@@ -159,18 +158,18 @@ def create_folds(n_splits: int, X, y, inner_val_size: float, random_state: int, 
         )
         
         outer_train = Data(outer_train)
-        outer_test = Data(outer_test)
+        outer_val = Data(outer_val)
         inner_train = Data(inner_train)
         inner_val = Data(inner_val)
 
         if standardize:
             outer_train.prepare({"standardize": {}})
-            outer_test.prepare({"standardize": {}})
+            outer_val.prepare({"standardize": {}})
             inner_train.prepare({"standardize": {}})
             inner_val.prepare({"standardize": {}})
     
         split_plan['outer_train'].append(outer_train)
-        split_plan['outer_test'].append(outer_test)
+        split_plan['outer_val'].append(outer_val)
         split_plan['inner_train'].append(inner_train)
         split_plan['inner_val'].append(inner_val)
 
@@ -189,7 +188,7 @@ def print_n_param_updates_per_epoch(hyperparam_grid: dict[str, list[float]], ful
     if hyperparam_grid['sequence_length'] and hyperparam_grid['batch_size']:
         for sequence_length in hyperparam_grid['sequence_length']:
             for batch_size in hyperparam_grid['batch_size']:  
-                print(f"Number of parameter updates per epoch with sequence_length={sequence_length} and batch_size={batch_size}: {math.ceil(full_data.n_samples / (sequence_length * batch_size))}")
+                print(f"Number of parameter updates per epoch with sequence_length={sequence_length} and batch_size={batch_size}: {np.ceil(full_data.n_samples / (sequence_length * batch_size))}")
     else:
         raise ValueError("Either 'sequence_length' or 'batch_size' (or both) is missing. Values for both 'sequence_length' and 'batch_size' must be provided in hyperparam_grid in order to print the number of parameter updates per epoch")
     
@@ -207,9 +206,6 @@ def get_hyperparam_combinations(hyperparam_grid: dict):
     hyperparam_combinations = [dict(zip(hyperparam_grid.keys(), combination)) for combination in combinations]
     return hyperparam_combinations
 
-"""
-MIGHT BE BIASED, WILL FIX LATER
-"""
 def run_grid_search(model_eval_log: dict, model_eval_log_save_path: str, hyperparam_grid: list[dict], seed: int, split_plan: dict):
     """
     Args:
@@ -227,32 +223,33 @@ def run_grid_search(model_eval_log: dict, model_eval_log_save_path: str, hyperpa
         None
     """
     for i, hyperparams in enumerate(get_hyperparam_combinations(hyperparam_grid)):
-        print(f"\nHyperparam set {i + }: {hyperparams}")
+        print(f"\nHyperparam set {i + 1}: {hyperparams}")
 
         random.seed(seed)
         np.random.seed(seed)
 
-        k = hyperparams['k']
-        del hyperparams['k']
+        k = hyperparams.pop('k')
         
         if k not in model_eval_log:
             model_eval_log[k] = {
                 'hyperparams': [], # [{hyperparams}]
-                'histories': [], # [[history object from best run for each fold]]
+                'inner_histories': [], # [[history object from best run for each fold]]
                 'best_epochs': [], # [[the best training epoch for each fold]]
+                'stopped_epochs': [],
                 'outer_free_energies': [], # [[float]]
             }
         
         if hyperparams not in model_eval_log[k]['hyperparams']:
-            histories = []
+            inner_histories = []
             best_epochs = []
+            stopped_epochs = []
             outer_free_energies = []
-            for f in range(len(split_plan['outer_test'])):
+            for f in range(len(split_plan['outer_train'])):
                 start = time.perf_counter()
                 
                 print(f"\nFold {f + 1}...")
-                outer_test, inner_train, inner_val = split_plan['outer_test'][f], split_plan['inner_train'][f], split_plan['inner_val'][f]
-                config = Config(
+                outer_train, outer_val, inner_train, inner_val = split_plan['outer_train'][f], split_plan['outer_val'][f], split_plan['inner_train'][f], split_plan['inner_val'][f]
+                inner_config = Config(
                     n_states=k,
                     n_channels=inner_train.n_channels,
                     sequence_length=hyperparams['sequence_length'],
@@ -264,20 +261,21 @@ def run_grid_search(model_eval_log: dict, model_eval_log_save_path: str, hyperpa
                     n_epochs=hyperparams['n_epochs'],
                 )
                     
-                model = Model(config)
+                inner_model = Model(inner_config)
 
                 if hyperparams['set_regularizers']:
-                    model.set_regularizers(inner_train)
+                    inner_model.set_regularizers(inner_train)
                     
                 try:
-                    model.random_state_time_course_initialization(inner_train, verbose=0)
+                    inner_model.random_state_time_course_initialization(inner_train, verbose=0)
                 except ValueError:
                     print("random_state_time_course_initialization can't simulate a state time course where each state activates. Switching to using random_subset_initialization instead.")
-                    model.random_subset_initialization(inner_train, verbose=0)
+                    inner_model.random_subset_initialization(inner_train, verbose=0)
                     
                 callback = EarlyStopping(monitor='val_loss', patience=hyperparams['patience'], verbose=0) 
-                history = model.fit(
+                inner_history = inner_model.fit(
                     inner_train,
+                    epochs=hyperparams['n_epochs'],
                     validation_data=inner_val.dataset(
                         sequence_length=hyperparams['sequence_length'],
                         batch_size=hyperparams['batch_size'],
@@ -286,20 +284,51 @@ def run_grid_search(model_eval_log: dict, model_eval_log_save_path: str, hyperpa
                     callbacks=[callback],
                 )
                         
-                histories.append(history)
-                best_epochs.append(np.argmin(history['val_loss']) + 1) # might be too low when fitting on full data. Maybe should save len(history) instead for flexibility
-                            
-                outer_free_energy = model.free_energy(outer_test) # should refit model on outer_train before this
-                outer_free_energies.append(test_free_energy)
+                inner_histories.append(inner_history)
+                best_epochs.append(np.argmin(inner_history['val_loss']) + 1) # might be too low when fitting on full data. Maybe should save len(history) instead for flexibility
+                stopped_epochs.append(len(inner_history['val_loss']))
+
+                outer_config = Config(
+                    n_states=k,
+                    n_channels=inner_train.n_channels,
+                    sequence_length=hyperparams['sequence_length'],
+                    learn_means=hyperparams['learn_means'],
+                    learn_covariances=hyperparams['learn_covariances'],
+                    batch_size=hyperparams['batch_size'], 
+                    learning_rate=hyperparams['learning_rate'], # Adam is the default optimizer
+                    lr_decay=hyperparams['lr_decay'], # exponential decay schedule by default
+                    n_epochs=hyperparams['n_epochs'],
+                )
+
+                outer_model = Model(outer_config)
+                
+                if hyperparams['set_regularizers']:
+                     outer_model.set_regularizers(inner_train)
+                    
+                try:
+                    outer_model.random_state_time_course_initialization(outer_train, verbose=0)
+                except ValueError:
+                    print("random_state_time_course_initialization can't simulate a state time course where each state activates. Switching to using random_subset_initialization instead.")
+                    outer_model.random_subset_initialization(outer_train, verbose=0)
+
+                outer_history = outer_model.fit(
+                    outer_train,
+                    epochs=
+                    verbose=0,
+                )
+                
+                outer_free_energy = outer_model.free_energy(outer_val) # should refit model on outer_train before this
+                outer_free_energies.append(outer_free_energy)
 
                 end = time.perf_counter()
-                time_elapsed = math.ceil(end - start)
+                time_elapsed = np.ceil(end - start)
                 min_elapsed, sec_elapsed = divmod(time_elapsed, 60)
                 print(f"Time elapsed for this realization: {min_elapsed} min. {sec_elapsed} sec.")
         
             model_eval_log[k]['hyperparams'].append(hyperparams)
-            model_eval_log[k]['histories'].append(histories)
+            model_eval_log[k]['inner_histories'].append(inner_histories)
             model_eval_log[k]['best_epochs'].append(best_epochs) # can take the mean across folds later (make sure to take the ceiling of the mean)
+            model_eval_log[k]['stopped_epochs'].append(stopped_epochs) # can take the mean across folds later (make sure to take the ceiling of the mean)
             model_eval_log[k]['outer_free_energies'].append(outer_free_energies) # can take the mean across folds later
         else:
             print(f"Hyperparam set {i + 1} has already been evaluated, skipping...")
@@ -321,8 +350,8 @@ def plot_cv_loss(model_eval_log: dict, k: int, split_plan: dict):
     """
     best_hyperparams_idx = np.nanargmin(np.mean(model_eval_log[k]['outer_free_energies'], axis=1))
     
-    for f in range(len(split_plan['outer_test'])):
-        example = model_eval_log[k]['histories'][best_hyperparams_idx]
+    for f in range(len(split_plan['outer_train'])):
+        example = model_eval_log[k]['inner_histories'][best_hyperparams_idx]
         fig, ax = plt.subplots(1, 1)
         x = range(1, len(example[f]['loss']) + 1)
         ax.plot(x, example[f]['loss'], label="Training Loss", color='blue', linestyle='-')
@@ -464,7 +493,7 @@ def run_full_model_eval(model_eval_log: dict, model_eval_log_save_path: str, k_v
                     batch_size=best_hyperparams['batch_size'],
                     learning_rate=best_hyperparams['learning_rate'],
                     lr_decay=best_hyperparams['lr_decay'],
-                    n_epochs=math.ceil(np.mean(model_eval_log[k]['best_epochs'][best_hyperparams_idx])),
+                    n_epochs=np.ceil(np.mean(model_eval_log[k]['best_epochs'][best_hyperparams_idx])),
                 )
         
                 model = Model(config)
@@ -523,7 +552,7 @@ def run_full_model_eval(model_eval_log: dict, model_eval_log_save_path: str, k_v
                 # model_eval_log[k]['MMDL'].append(MMDL)
 
                 end = time.perf_counter()
-                time_elapsed = math.ceil(end - start)
+                time_elapsed = np.ceil(end - start)
                 min_elapsed, sec_elapsed = divmod(time_elapsed, 60)
                 print(f"Time elapsed for this realization: {min_elapsed} min. {sec_elapsed} sec.")
             
