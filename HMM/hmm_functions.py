@@ -13,17 +13,10 @@ import tensorflow as tf
 from tensorflow.keras.callbacks import EarlyStopping
 import time
 import pickle
-from osl_dynamics.data import Data, processing
+from osl_dynamics.data import Data
 from osl_dynamics.models.hmm import Config, Model
 from scipy.special import logsumexp
-from osl_dynamics.models import load
 from osl_dynamics.utils import plotting
-from osl_dynamics.inference import modes
-from osl_dynamics.analysis import post_hoc
-from collections import defaultdict
-import pandas as pd
-import seaborn as sns
-from scipy.stats import mannwhitneyu, kruskal, f_oneway, permutation_test
 
 # Adapted get_eigenvectors() from github.com/PSYMARKER/leida-python/tree/master/pyleida/signal_tools/_signal_tools.py
 def get_eigenvectors(dFC, n=1):
