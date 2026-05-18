@@ -13,6 +13,7 @@ import tensorflow as tf
 from tensorflow.keras.callbacks import EarlyStopping
 import time
 import pickle
+import pandas as pd
 from osl_dynamics.data import Data
 from osl_dynamics.models.hmm import Config, Model
 from scipy.special import logsumexp
@@ -205,7 +206,6 @@ def make_seed(base_seed: int, *parts) -> int:
     payload = json.dumps([base_seed, *parts], sort_keys=True).encode()
     return int.from_bytes(hashlib.blake2b(payload, digest_size=4).digest(), "little")
 
-
 def set_all_seeds(seed: int) -> None:
     tf.keras.utils.set_random_seed(seed)
 
@@ -232,7 +232,7 @@ def run_grid_search(model_eval_log: dict, model_eval_log_save_path: str, hyperpa
         if k not in model_eval_log:
             model_eval_log[k] = {}
         
-        hp_key = sorted(tuple(hyperparams.items()))
+        hp_key = tuple(sorted(hyperparams.items()))
         if hp_key not in model_eval_log[k]:
             model_eval_log[k][hp_key] = {}
             model_eval_log[k][hp_key]['hyperparams'] = hyperparams
@@ -359,7 +359,7 @@ def plot_cv_loss(model_eval_log: dict, k: int, split_plan: dict):
         None
     """
     sorted_model_eval_log = sorted(model_eval_log[k].items(), key=lambda item: np.mean(item[1]['outer_free_energies'])) # sort hyperparameter combinations by mean outer free energy across folds
-    example = sorted_model_eval_log[0] # get the inner training history of the best hyperparameter combination (the one with the lowest mean outer free energy across folds)
+    example = sorted_model_eval_log[0] 
     
     for f in range(len(split_plan['outer_train'])):
         fig, ax = plt.subplots(1, 1)
@@ -367,7 +367,7 @@ def plot_cv_loss(model_eval_log: dict, k: int, split_plan: dict):
         ax.plot(x, example[1]['inner_histories'][f]['loss'], label="Training Loss", color='blue', linestyle='-')
         ax.plot(x, example[1]['inner_histories'][f]['val_loss'], label="Validation Loss", color='orange', linestyle='--')
     
-        ax.set_title(f"{k} States, {str(example[0])}\nLowest validation loss achieved: {np.min(example[1]['inner_histories'][f]['val_loss']):.3f} at epoch {example[1]['best_epochs'][f]}")
+        ax.set_title(f"{k} States, {str(example[1]['hyperparams'])}\nLowest validation loss achieved: {np.min(example[1]['inner_histories'][f]['val_loss']):.3f} at epoch {example[1]['best_epochs'][f]}")
         ax.set_xlabel("Epoch")
         ax.set_ylabel("Loss (Free Energy)")
         ax.legend()
@@ -381,17 +381,18 @@ def hyperparam_performance(model_eval_log: dict, k: int):
         k              : int
                          k value for which to print searched hyperparameters and corresponding results
     Returns:
-        None
+        performance_df : pandas DataFrame
+                         Contains the hyperparameter combinations that were searched and their corresponding average outer free energy across folds and average best inner training epoch across folds. Sorted by average outer free energy in ascending order (lowest average outer free energy at the top)
     """
-    for h, t, e in sorted(
-        zip(
-            model_eval_log[k]['hyperparams'], 
-            np.mean(model_eval_log[k]['outer_free_energies'], axis=1), 
-            np.mean(model_eval_log[k]['best_epochs'], axis=1)
-        ), 
-        key=lambda x: x[1]
-    ):
-        print(f"{h}: {t:.3f}, took {e:.1f} epochs on average")
+    sorted_model_eval_log = sorted(model_eval_log[k].items(), key=lambda item: np.mean(item[1]['outer_free_energies'])) # sort hyperparameter combinations by mean outer free energy across folds
+    performance_df = pd.DataFrame({
+        'k': [k] * len(sorted_model_eval_log),
+        'hyperparams': [res[1]['hyperparams'] for res in sorted_model_eval_log],
+        'average_outer_free_energy': [np.mean(res[1]['outer_free_energies']) for res in sorted_model_eval_log],
+        'best_inner_training_epochs': [res[1]['best_epochs'] for res in sorted_model_eval_log]
+    })
+    
+    return performance_df
 
 # Adapted osl_dynamics.models.inf_mod_base.MarkovStateInferenceModelBase.evidence() to return the full log-likelihood
 def hmm_total_loglik(model, dataset):
@@ -667,4 +668,3 @@ def leida_sanity_check(mean_phase_coherences, state_means, state_covs, figsize: 
         plt.show()
 
     return np.array(outer_products)
-
