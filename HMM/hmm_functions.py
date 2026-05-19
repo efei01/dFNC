@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import itertools
 import json
 import hashlib
+import tempfile
 import tensorflow as tf
 from tensorflow.keras.callbacks import EarlyStopping
 import time
@@ -209,19 +210,30 @@ def make_seed(base_seed: int, *parts) -> int:
 def set_all_seeds(seed: int) -> None:
     tf.keras.utils.set_random_seed(seed)
 
-def run_grid_search(model_eval_log: dict, model_eval_log_save_path: str, hyperparam_grid: list[dict], seed: int, split_plan: dict):
+def save_log_atomic(obj, path):
+    directory = os.path.dirname(path) or "."
+    fd, tmp_path = tempfile.mkstemp(dir=directory, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            pickle.dump(obj, f)
+        os.replace(tmp_path, path)
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+def run_grid_search(grid_search_log: dict, grid_search_log_save_path: str, hyperparam_grid: list[dict], seed: int, split_plan: dict):
     """
     Args:
-        model_eval_log           : dict
-                                   Can be empty or not. Will be modified by this function
-        model_eval_log_save_path : str
-                                   The path at which to save model_eval_log as a pickle. A save is done after the grid search for each k value
-        hyperparam_grid          : dict
-                                   Keys are hyperparameter names. Values should be lists containing values of the corresponding hyperparameter that need to be searched. Each combination dictionary must have keys 'k', 'sequence_length', 'learn_means', 'learn_covariances', 'set_regularizers', 'batch_size', 'learning_rate', 'lr_decay', 'n_epochs', and 'patience'
-        seed                     : int
-                                   For reproducibility
-        split_plan               : dict
-                                   Output of create_folds()
+        grid_search_log           : dict
+                                    Can be empty or not. Will be modified by this function
+        grid_search_log_save_path : str
+                                    The path at which to save grid_search_log as a pickle. A save is done after the grid search for each k value
+        hyperparam_grid           : dict
+                                    Keys are hyperparameter names. Values should be lists containing values of the corresponding hyperparameter that need to be searched. Each combination dictionary must have keys 'k', 'sequence_length', 'learn_means', 'learn_covariances', 'set_regularizers', 'batch_size', 'learning_rate', 'lr_decay', 'n_epochs', and 'patience'
+        seed                      : int
+                                    For reproducibility
+        split_plan                : dict
+                                    Output of create_folds()
     Returns:
         None
     """
@@ -229,136 +241,147 @@ def run_grid_search(model_eval_log: dict, model_eval_log_save_path: str, hyperpa
         print(f"\nHyperparam set {i + 1}: {hyperparams}")
 
         k = hyperparams.pop('k')
-        if k not in model_eval_log:
-            model_eval_log[k] = {}
+        if k not in grid_search_log:
+            grid_search_log[k] = {}
         
         hp_key = tuple(sorted(hyperparams.items()))
-        if hp_key not in model_eval_log[k]:
-            model_eval_log[k][hp_key] = {}
-            model_eval_log[k][hp_key]['hyperparams'] = hyperparams
-            model_eval_log[k][hp_key]['inner_histories'] = [] # [history object from inner training for each fold]
-            model_eval_log[k][hp_key]['best_epochs'] = [] # [the best inner training epoch for each fold]
-            model_eval_log[k][hp_key]['inner_epochs'] = [] # [number of epochs actually run during inner training by early stopping]
-            model_eval_log[k][hp_key]['outer_epochs'] = [] # [the number of epochs the outer model was fit for in each fold]
-            model_eval_log[k][hp_key]['outer_free_energies'] = [] # [the free energy of the model fitted on outer_train and evaluated on outer_val for each fold]
 
-            for f in range(len(split_plan['outer_train'])):
-                start = time.perf_counter()
+        n_folds = len(split_plan["outer_train"])
+
+        entry = grid_search_log[k].setdefault(hp_key, {
+            "hyperparams": hyperparams,
+            "inner_histories": [], # [history object from inner training for each fold]
+            "best_epochs": [], # [the best inner training epoch for each fold]
+            "inner_epochs": [], # [number of epochs actually run during inner training by early stopping]
+            "outer_epochs": [], # [the number of epochs the outer model was fit for in each fold]
+            "outer_free_energies": [], # [the free energy of the model fitted on outer_train and evaluated on outer_val for each fold]
+            "status": "incomplete",
+        })
+
+        n_done = len(entry["outer_free_energies"])
+
+        if entry.get("status") == "complete" and n_done == n_folds:
+            print(f"Hyperparam set {i + 1} has already been evaluated, skipping...")
+            continue
+
+        for f in range(n_done, n_folds):
+            start = time.perf_counter()
                 
-                print(f"\nFold {f + 1}...")
-                outer_train, outer_val, inner_train, inner_val = split_plan['outer_train'][f], split_plan['outer_val'][f], split_plan['inner_train'][f], split_plan['inner_val'][f]
+            print(f"\nFold {f + 1} of {n_folds}...")
+            outer_train, outer_val, inner_train, inner_val = split_plan['outer_train'][f], split_plan['outer_val'][f], split_plan['inner_train'][f], split_plan['inner_val'][f]
 
-                # Inner fit: mainly so we can plot validation loss curves later and for getting a rough estimate of what n_epochs should be
-                inner_config = Config(
-                    n_states=k,
-                    n_channels=inner_train.n_channels,
-                    sequence_length=hyperparams['sequence_length'],
-                    learn_means=hyperparams['learn_means'],
-                    learn_covariances=hyperparams['learn_covariances'],
-                    batch_size=hyperparams['batch_size'], 
-                    learning_rate=hyperparams['learning_rate'], # Adam is the default optimizer
-                    lr_decay=hyperparams['lr_decay'], # exponential decay schedule by default
-                    n_epochs=hyperparams['n_epochs'],
-                )
+            # Inner fit: mainly so we can plot validation loss curves later and for getting a rough estimate of what n_epochs should be
+            inner_config = Config(
+                n_states=k,
+                n_channels=inner_train.n_channels,
+                sequence_length=hyperparams['sequence_length'],
+                learn_means=hyperparams['learn_means'],
+                learn_covariances=hyperparams['learn_covariances'],
+                batch_size=hyperparams['batch_size'], 
+                learning_rate=hyperparams['learning_rate'], # Adam is the default optimizer
+                lr_decay=hyperparams['lr_decay'], # exponential decay schedule by default
+                n_epochs=hyperparams['n_epochs'],
+            )
                 
-                set_all_seeds(make_seed(seed, "inner", int(k), int(f)))
-                inner_model = Model(inner_config)
+            set_all_seeds(make_seed(seed, "inner", int(k), int(f)))
+            inner_model = Model(inner_config)
 
-                if hyperparams['set_regularizers']:
+            if hyperparams['set_regularizers']:
                     inner_model.set_regularizers(inner_train)
                     
-                try:
-                    inner_model.random_state_time_course_initialization(inner_train, verbose=0)
-                except ValueError:
-                    print("random_state_time_course_initialization can't simulate a state time course where each state activates. Switching to using random_subset_initialization instead.")
-                    inner_model.random_subset_initialization(inner_train, verbose=0)
+            try:
+                inner_model.random_state_time_course_initialization(inner_train, verbose=0)
+            except ValueError:
+                print("random_state_time_course_initialization can't simulate a state time course where each state activates. Switching to using random_subset_initialization instead.")
+                inner_model.random_subset_initialization(inner_train, verbose=0)
                     
-                callback = EarlyStopping(
-                    monitor='val_loss',
-                    mode='min',
-                    patience=hyperparams['patience'],
-                    min_delta=0.0,
-                    restore_best_weights=False,
-                    verbose=0,
-                )
-                inner_history = inner_model.fit(
-                    inner_train,
-                    epochs=hyperparams['n_epochs'],
-                    validation_data=inner_val.dataset(
-                        sequence_length=hyperparams['sequence_length'],
-                        batch_size=hyperparams['batch_size'],
-                    ),
-                    verbose=0,
-                    callbacks=[callback],
-                )
-                        
-                model_eval_log[k][hp_key]['inner_histories'].append(inner_history)
-                best_epoch = np.argmin(inner_history['val_loss']) + 1
-                model_eval_log[k][hp_key]['best_epochs'].append(best_epoch)
-                model_eval_log[k][hp_key]['inner_epochs'].append(len(inner_history['val_loss']))
-
-                # Outer fit: fit on all of outer_train for (approximately) the number of epochs determined by the inner fit, then evaluate on outer_val. The performance on outer_val is used to determine the best hyperparameters
-                outer_config = Config(
-                    n_states=k,
-                    n_channels=outer_train.n_channels,
+            callback = EarlyStopping(
+                monitor='val_loss',
+                mode='min',
+                patience=hyperparams['patience'],
+                min_delta=0.0,
+                restore_best_weights=False,
+                verbose=0,
+            )
+            inner_history = inner_model.fit(
+                inner_train,
+                epochs=hyperparams['n_epochs'],
+                validation_data=inner_val.dataset(
                     sequence_length=hyperparams['sequence_length'],
-                    learn_means=hyperparams['learn_means'],
-                    learn_covariances=hyperparams['learn_covariances'],
-                    batch_size=hyperparams['batch_size'], 
-                    learning_rate=hyperparams['learning_rate'], # Adam is the default optimizer
-                    lr_decay=hyperparams['lr_decay'], # exponential decay schedule by default
-                    n_epochs=hyperparams['n_epochs'],
-                )
+                    batch_size=hyperparams['batch_size'],
+                ),
+                verbose=0,
+                callbacks=[callback],
+            )
+                        
+            grid_search_log[k][hp_key]['inner_histories'].append(inner_history)
+            best_epoch = np.argmin(inner_history['val_loss']) + 1
+            grid_search_log[k][hp_key]['best_epochs'].append(best_epoch)
+            grid_search_log[k][hp_key]['inner_epochs'].append(len(inner_history['val_loss']))
 
-                set_all_seeds(make_seed(seed, "outer", int(k), int(f)))
-                outer_model = Model(outer_config)
+            # Outer fit: fit on all of outer_train for (approximately) the number of epochs determined by the inner fit, then evaluate on outer_val. The performance on outer_val is used to determine the best hyperparameters
+            outer_config = Config(
+                n_states=k,
+                n_channels=outer_train.n_channels,
+                sequence_length=hyperparams['sequence_length'],
+                learn_means=hyperparams['learn_means'],
+                learn_covariances=hyperparams['learn_covariances'],
+                batch_size=hyperparams['batch_size'], 
+                learning_rate=hyperparams['learning_rate'], # Adam is the default optimizer
+                lr_decay=hyperparams['lr_decay'], # exponential decay schedule by default
+                n_epochs=hyperparams['n_epochs'],
+            )
+
+            set_all_seeds(make_seed(seed, "outer", int(k), int(f)))
+            outer_model = Model(outer_config)
                 
-                if hyperparams['set_regularizers']:
-                     outer_model.set_regularizers(outer_train)
+            if hyperparams['set_regularizers']:
+                    outer_model.set_regularizers(outer_train)
                     
-                try:
-                    outer_model.random_state_time_course_initialization(outer_train, verbose=0)
-                except ValueError:
-                    print("random_state_time_course_initialization can't simulate a state time course where each state activates. Switching to using random_subset_initialization instead.")
-                    outer_model.random_subset_initialization(outer_train, verbose=0)
+            try:
+                outer_model.random_state_time_course_initialization(outer_train, verbose=0)
+            except ValueError:
+                print("random_state_time_course_initialization can't simulate a state time course where each state activates. Switching to using random_subset_initialization instead.")
+                outer_model.random_subset_initialization(outer_train, verbose=0)
 
-                outer_epochs = min(
-                        hyperparams['n_epochs'], 
-                        int(np.ceil(best_epoch + 0.25 * hyperparams["patience"])) # add small buffer to best_epoch since we're fitting on a different amount of data now
-                )
-                outer_history = outer_model.fit(
-                    outer_train,
-                    epochs=outer_epochs,
-                    verbose=0,
-                )
+            outer_epochs = min(
+                    hyperparams['n_epochs'], 
+                    int(np.ceil(best_epoch + 0.25 * hyperparams["patience"])) # add small buffer to best_epoch since we're fitting on a different amount of data now
+            )
+            outer_history = outer_model.fit(
+                outer_train,
+                epochs=outer_epochs,
+                verbose=0,
+            )
                 
-                model_eval_log[k][hp_key]['outer_epochs'].append(outer_epochs)
-                outer_free_energy = outer_model.free_energy(outer_val) 
-                model_eval_log[k][hp_key]['outer_free_energies'].append(outer_free_energy)
+            grid_search_log[k][hp_key]['outer_epochs'].append(outer_epochs)
+            outer_free_energy = outer_model.free_energy(outer_val) 
+            grid_search_log[k][hp_key]['outer_free_energies'].append(outer_free_energy)
 
-                end = time.perf_counter()
-                time_elapsed = int(np.ceil(end - start))
-                min_elapsed, sec_elapsed = divmod(time_elapsed, 60)
-                print(f"Time elapsed for this realization: {min_elapsed} min. {sec_elapsed} sec.")
-        else:
-            print(f"Hyperparam set {i + 1} has already been evaluated, skipping...")
+            save_log_atomic(grid_search_log, grid_search_log_save_path)
+
+            end = time.perf_counter()
+            time_elapsed = int(np.ceil(end - start))
+            min_elapsed, sec_elapsed = divmod(time_elapsed, 60)
+            print(f"Time elapsed for this fold: {min_elapsed} min. {sec_elapsed} sec.")
     
-        with open(model_eval_log_save_path, 'wb') as f:
-            pickle.dump(model_eval_log, f)
+        entry["status"] = "complete"
+        save_log_atomic(grid_search_log, grid_search_log_save_path)
 
-def plot_cv_loss(model_eval_log: dict, k: int, split_plan: dict):
+def plot_cv_loss(grid_search_log: dict, k: int, split_plan: dict):
     """
     Args:
-        model_eval_log : dict
-                         model_eval_log as modified by run_grid_search()
-        k              : int
-                         k value for which to plot the training and validation loss curves of optimal hyperparameters
-        split_plan     : dict
-                         Output of create_folds()
+        grid_search_log : dict
+                          grid_search_log as modified by run_grid_search()
+        k               : int
+                          k value for which to plot the training and validation loss curves of optimal hyperparameters
+        split_plan      : dict
+                          Output of create_folds()
     Returns:
         None
     """
-    sorted_model_eval_log = sorted(model_eval_log[k].items(), key=lambda item: np.mean(item[1]['outer_free_energies'])) # sort hyperparameter combinations by mean outer free energy across folds
+    log_hyperparams = {key: value for key, value in grid_search_log[k].items() if type(key) == tuple}
+    sorted_model_eval_log = sorted(log_hyperparams.items(), key=lambda item: np.mean(item[1]['outer_free_energies'])) # sort hyperparameter combinations by mean outer free energy across folds
     example = sorted_model_eval_log[0] 
     
     for f in range(len(split_plan['outer_train'])):
@@ -373,18 +396,19 @@ def plot_cv_loss(model_eval_log: dict, k: int, split_plan: dict):
         ax.legend()
         plt.show()
 
-def hyperparam_performance(model_eval_log: dict, k: int):
+def hyperparam_performance(grid_search_log: dict, k: int):
     """
     Args:
-        model_eval_log : dict
-                         model_eval_log as modified by run_grid_search()
-        k              : int
+        grid_search_log : dict
+                          grid_search_log as modified by run_grid_search()
+        k               : int
                          k value for which to print searched hyperparameters and corresponding results
     Returns:
-        performance_df : pandas DataFrame
-                         Contains the hyperparameter combinations that were searched and their corresponding average outer free energy across folds and average best inner training epoch across folds. Sorted by average outer free energy in ascending order (lowest average outer free energy at the top)
+        performance_df  : pandas DataFrame
+                          Contains the hyperparameter combinations that were searched and their corresponding average outer free energy across folds and average best inner training epoch across folds. Sorted by average outer free energy in ascending order (lowest average outer free energy at the top)
     """
-    sorted_model_eval_log = sorted(model_eval_log[k].items(), key=lambda item: np.mean(item[1]['outer_free_energies'])) # sort hyperparameter combinations by mean outer free energy across folds
+    log_hyperparams = {key: value for key, value in grid_search_log[k].items() if type(key) == tuple}
+    sorted_model_eval_log = sorted(log_hyperparams.items(), key=lambda item: np.mean(item[1]['outer_free_energies'])) # sort hyperparameter combinations by mean outer free energy across folds
     performance_df = pd.DataFrame({
         'k': [k] * len(sorted_model_eval_log),
         'hyperparams': [res[1]['hyperparams'] for res in sorted_model_eval_log],
@@ -449,7 +473,7 @@ def run_full_model_eval(model_eval_log: dict, model_eval_log_save_path: str, k_v
     """
     Args:
         model_eval_log           : dict
-                                   model_eval_log as modified by run_grid_search(). The actual values of the model evaluation metrics will be stored here
+                                   The actual values of the model evaluation metrics will be stored here
         model_eval_log_save_path : str
                                    The path at which to save model_eval_log as a pickle. A save is done after the grid search for each k value
         k_values                 : list[int]
@@ -475,7 +499,6 @@ def run_full_model_eval(model_eval_log: dict, model_eval_log_save_path: str, k_v
             del model_eval_log[k]['free_energy']
             del model_eval_log[k]['total_LL'] 
             del model_eval_log[k]['BIC'] 
-            # del model_eval_log[k]['MMDL'] 
         
         if 'realizations' not in model_eval_log[k]:
             model_eval_log[k]['realizations'] = []
@@ -483,7 +506,6 @@ def run_full_model_eval(model_eval_log: dict, model_eval_log_save_path: str, k_v
             model_eval_log[k]['free_energy'] = []
             model_eval_log[k]['total_LL'] = []
             model_eval_log[k]['BIC'] = []
-            # model_eval_log[k]['MMDL'] = []
             
             random.seed(seed)
             np.random.seed(seed)
@@ -531,15 +553,10 @@ def run_full_model_eval(model_eval_log: dict, model_eval_log_save_path: str, k_v
                     model_eval_log[k]['realizations'][r]['covs'] = covs
             
                 off_diags = []
-                # dof = [] # degrees of freedom of inverse covariance matrices (precision matrices), used to compute MMDL
                 for cov in covs:
                     ut = np.triu(cov, k=1) # upper triangle, excluding main diagonal
                     off_diag = ut[ut != 0] # np.triu() returns a full matrix, so filter out lower triangle entries and flatten to a 1-D array
                     off_diags.append(off_diag)
-        
-                    # precision_matrix = np.linalg.inv(cov)
-                    # precision_matrix_ut = np.triu(precision_matrix) # upper triangle, incuding main diagonal
-                    # dof.append(np.sum(precision_matrix_ut != 0)) # "Df(k) is the number of non-zeroes in the precision matrix"
             
                 model_eval_log[k]['realizations'][r]['off_diags'] = np.array(off_diags).T # (number of upper triangle entries x k)
                 
@@ -555,12 +572,6 @@ def run_full_model_eval(model_eval_log: dict, model_eval_log_save_path: str, k_v
                     n_estimated_params += k * (d * (d + 1)) / 2 # d x d covariance matrix per state. Since the covariance is symmetric, we just keep the upper triangle, including the main diagonal, which sums to (d * (d - 1)) / 2 + d = (d * (d - 1) + 2d) / 2 = (d * (d + 1)) / 2 covariance params per state
                 BIC = n_estimated_params * np.log(full_data.n_samples) - 2 * total_LL
                 model_eval_log[k]['BIC'].append(BIC)
-        
-                # # Compute Mixture Minimum Description Length (MMDL) 
-                # alpha = np.array(model.get_alpha(full_data)) # state probability time courses for each subject. Has shape (n_subjects, n_timepoints, k)
-                # third_term = np.sum([np.log(full_data.n_samples * np.sum(alpha[:, :, state])) * dof[state] for state in range(k)]) / 2
-                # MMDL = -total_LL + np.log(full_data.n_samples) * k * (k - 1) / 2 + third_term
-                # model_eval_log[k]['MMDL'].append(MMDL)
 
                 end = time.perf_counter()
                 time_elapsed = int(np.ceil(end - start))
