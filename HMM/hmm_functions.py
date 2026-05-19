@@ -663,8 +663,31 @@ def leida_sanity_check(mean_phase_coherences, state_means, state_covs, figsize: 
         axs[0].imshow(mean_phase_coherences[state])
         axs[0].set_title("Mean Phase Coherence")
         axs[1].imshow(state_covs[state] + outer_products[state])
-        axs[1].set_title("Rank-1 Approx. of Phase Coherence")
+        axs[1].set_title("Expectation of Outer Product of \nLeading Eigenvector with Itself")
         plt.suptitle(f"State {state + 1}")
         plt.show()
 
     return np.array(outer_products)
+
+def create_hypothesis_testing_dataframe(group_data: dict, group_labels: list, metrics: list, k: int):
+    """
+    Args:
+        group_data   : dict
+        group_labels : list
+        metrics      : list
+        k            : int
+    Returns:
+        ht_df        : pandas DataFrame
+    """
+    group_dfs = []
+
+    for label in group_labels:
+        group_df = pd.DataFrame({
+            f'{metric}_state{state + 1}': list(group_data[label][metric][:, state]) for metric in metrics for state in range(k)
+        })
+        group_df['group'] = label
+    
+        group_dfs.append(group_df)
+    
+    ht_df = pd.concat(group_dfs, axis=0, ignore_index=True)
+    return ht_df
