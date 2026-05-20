@@ -210,6 +210,18 @@ def make_seed(base_seed: int, *parts) -> int:
 def set_all_seeds(seed: int) -> None:
     tf.keras.utils.set_random_seed(seed)
 
+def as_serializable_history(history):
+    """
+    Convert osl-dynamics/Keras history into a pickle-friendly dict.
+    """
+    if hasattr(history, "history"):
+        history = history.history
+
+    return {
+        key: [float(x) for x in values]
+        for key, values in history.items()
+    }
+
 def save_log_atomic(obj, path):
     directory = os.path.dirname(path) or "."
     fd, tmp_path = tempfile.mkstemp(dir=directory, suffix=".tmp")
@@ -246,28 +258,28 @@ def run_grid_search(grid_search_log: dict, grid_search_log_save_path: str, hyper
         
         hp_key = tuple(sorted(hyperparams.items()))
 
-        n_folds = len(split_plan["outer_train"])
+        n_folds = len(split_plan['outer_train'])
 
         entry = grid_search_log[k].setdefault(hp_key, {
-            "hyperparams": hyperparams,
-            "inner_histories": [], # [history object from inner training for each fold]
-            "best_epochs": [], # [the best inner training epoch for each fold]
-            "inner_epochs": [], # [number of epochs actually run during inner training by early stopping]
-            "outer_epochs": [], # [the number of epochs the outer model was fit for in each fold]
-            "outer_free_energies": [], # [the free energy of the model fitted on outer_train and evaluated on outer_val for each fold]
-            "status": "incomplete",
+            'hyperparams': hyperparams,
+            'inner_histories': [], # [history object from inner training for each fold]
+            'best_epochs': [], # [the best inner training epoch for each fold]
+            'inner_epochs': [], # [number of epochs actually run during inner training by early stopping]
+            'outer_epochs': [], # [the number of epochs the outer model was fit for in each fold]
+            'outer_free_energies': [], # [the free energy of the model fitted on outer_train and evaluated on outer_val for each fold]
+            'status': "incomplete",
         })
 
-        n_done = len(entry["outer_free_energies"])
+        n_done = len(entry['outer_free_energies'])
 
-        if entry.get("status") == "complete" and n_done == n_folds:
+        if entry.get('status') == "complete" and n_done == n_folds:
             print(f"Hyperparam set {i + 1} has already been evaluated, skipping...")
             continue
 
         for f in range(n_done, n_folds):
             start = time.perf_counter()
                 
-            print(f"\nFold {f + 1} of {n_folds}...")
+            print(f"\nFold {f + 1}/{n_folds}...")
             outer_train, outer_val, inner_train, inner_val = split_plan['outer_train'][f], split_plan['outer_val'][f], split_plan['inner_train'][f], split_plan['inner_val'][f]
 
             # Inner fit: mainly so we can plot validation loss curves later and for getting a rough estimate of what n_epochs should be
@@ -313,6 +325,8 @@ def run_grid_search(grid_search_log: dict, grid_search_log_save_path: str, hyper
                 verbose=0,
                 callbacks=[callback],
             )
+
+            inner_history = as_serializable_history(inner_history)
                         
             grid_search_log[k][hp_key]['inner_histories'].append(inner_history)
             best_epoch = np.argmin(inner_history['val_loss']) + 1
@@ -365,36 +379,8 @@ def run_grid_search(grid_search_log: dict, grid_search_log_save_path: str, hyper
             min_elapsed, sec_elapsed = divmod(time_elapsed, 60)
             print(f"Time elapsed for this fold: {min_elapsed} min. {sec_elapsed} sec.")
     
-        entry["status"] = "complete"
+        entry['status'] = "complete"
         save_log_atomic(grid_search_log, grid_search_log_save_path)
-
-def plot_cv_loss(grid_search_log: dict, k: int, split_plan: dict):
-    """
-    Args:
-        grid_search_log : dict
-                          grid_search_log as modified by run_grid_search()
-        k               : int
-                          k value for which to plot the training and validation loss curves of optimal hyperparameters
-        split_plan      : dict
-                          Output of create_folds()
-    Returns:
-        None
-    """
-    log_hyperparams = {key: value for key, value in grid_search_log[k].items() if type(key) == tuple}
-    sorted_model_eval_log = sorted(log_hyperparams.items(), key=lambda item: np.mean(item[1]['outer_free_energies'])) # sort hyperparameter combinations by mean outer free energy across folds
-    example = sorted_model_eval_log[0] 
-    
-    for f in range(len(split_plan['outer_train'])):
-        fig, ax = plt.subplots(1, 1)
-        x = range(1, len(example[1]['inner_histories'][f]['loss']) + 1)
-        ax.plot(x, example[1]['inner_histories'][f]['loss'], label="Training Loss", color='blue', linestyle='-')
-        ax.plot(x, example[1]['inner_histories'][f]['val_loss'], label="Validation Loss", color='orange', linestyle='--')
-    
-        ax.set_title(f"{k} States, {str(example[1]['hyperparams'])}\nLowest validation loss achieved: {np.min(example[1]['inner_histories'][f]['val_loss']):.3f} at epoch {example[1]['best_epochs'][f]}")
-        ax.set_xlabel("Epoch")
-        ax.set_ylabel("Loss (Free Energy)")
-        ax.legend()
-        plt.show()
 
 def hyperparam_performance(grid_search_log: dict, k: int):
     """
@@ -402,21 +388,84 @@ def hyperparam_performance(grid_search_log: dict, k: int):
         grid_search_log : dict
                           grid_search_log as modified by run_grid_search()
         k               : int
-                         k value for which to print searched hyperparameters and corresponding results
+                          k value for which to print searched hyperparameters and corresponding results
     Returns:
         performance_df  : pandas DataFrame
                           Contains the hyperparameter combinations that were searched and their corresponding average outer free energy across folds and average best inner training epoch across folds. Sorted by average outer free energy in ascending order (lowest average outer free energy at the top)
     """
-    log_hyperparams = {key: value for key, value in grid_search_log[k].items() if type(key) == tuple}
-    sorted_model_eval_log = sorted(log_hyperparams.items(), key=lambda item: np.mean(item[1]['outer_free_energies'])) # sort hyperparameter combinations by mean outer free energy across folds
+    candidates = []
+
+    for hp_key, entry in grid_search_log[k].items():
+        outer_fe = np.asarray(entry.get('outer_free_energies', []), dtype=float)
+
+        if entry.get('status') != "complete":
+            continue
+
+        if len(outer_fe) == 0 or np.all(np.isnan(outer_fe)):
+            continue
+
+        score = np.nanmean(outer_fe)
+        candidates.append((score, hp_key))
+
+    if len(candidates) == 0:
+        raise ValueError(f"No complete grid-search entries found for k={k}.")
+
+    candidates.sort(key=lambda res: res[0])  # lower free energy is better
+
     performance_df = pd.DataFrame({
-        'k': [k] * len(sorted_model_eval_log),
-        'hyperparams': [res[1]['hyperparams'] for res in sorted_model_eval_log],
-        'average_outer_free_energy': [np.mean(res[1]['outer_free_energies']) for res in sorted_model_eval_log],
-        'best_inner_training_epochs': [res[1]['best_epochs'] for res in sorted_model_eval_log]
+        'k': [k] * len(candidates),
+        'hyperparams': [grid_search_log[k][res[1]]['hyperparams'] for res in candidates],
+        'average_outer_free_energy': [np.nanmean(grid_search_log[k][res[1]]['outer_free_energies']) for res in candidates],
+        'best_inner_training_epochs': [grid_search_log[k][res[1]]['best_epochs'] for res in candidates]
     })
-    
+
     return performance_df
+
+def plot_cv_loss(grid_search_log: dict, k: int):
+    """
+    Args:
+        grid_search_log : dict
+                          grid_search_log as modified by run_grid_search()
+        k               : int
+                          k value for which to plot the training and validation loss curves of optimal hyperparameters
+    Returns:
+        None
+    """
+    performance_df = hyperparam_performance(grid_search_log, k)
+    best_res = performance_df.iloc[0] 
+    hyperparams, best_inner_training_epochs = best_res['hyperparams'], best_res['best_inner_training_epochs']
+    hp_key = tuple(sorted(hyperparams.items()))
+    
+    for f in range(len(best_inner_training_epochs)):
+        inner_history = grid_search_log[k][hp_key]['inner_histories'][f]
+
+        fig, ax = plt.subplots(1, 1)
+        x = range(1, len(inner_history['loss']) + 1)
+        ax.plot(x, inner_history['loss'], label="Training Loss", color='blue', linestyle='-')
+        ax.plot(x, inner_history['val_loss'], label="Validation Loss", color='orange', linestyle='--')
+    
+        ax.set_title(f"{k} States, {str(hyperparams)}\nLowest validation loss achieved: {np.min(inner_history['val_loss']):.3f} at epoch {best_inner_training_epochs[f]}")
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Loss (Free Energy)")
+        ax.legend()
+        plt.show()
+
+def choose_final_epochs(selected_entry: dict, quantile: float = 0.75) -> int:
+    """
+    Choose final full-data training duration from grid-search outer_epochs.
+    """
+    hyperparams = selected_entry['hyperparams']
+    max_epochs = int(hyperparams['n_epochs'])
+
+    outer_epochs = np.asarray(selected_entry['outer_epochs'], dtype=float)
+
+    if len(outer_epochs) == 0 or np.all(np.isnan(outer_epochs)):
+        raise ValueError("Selected hyperparameter entry has no usable outer_epochs.")
+
+    final_epochs = int(np.ceil(np.nanquantile(outer_epochs, quantile)))
+    final_epochs = max(1, min(max_epochs, final_epochs))
+
+    return final_epochs
 
 # Adapted osl_dynamics.models.inf_mod_base.MarkovStateInferenceModelBase.evidence() to return the full log-likelihood
 def hmm_total_loglik(model, dataset):
@@ -468,132 +517,244 @@ def hmm_total_loglik(model, dataset):
             log_filt -= log_c[:, None] # log p(s_t | x_{1:t}) (normalized). Expand log_c to have shape (batch_size, 1), then broadcast and subtract from log_filt
 
     return total_loglik
-    
-def run_full_model_eval(model_eval_log: dict, model_eval_log_save_path: str, k_values: list[int], n_realizations: int, model_save_metric: str, seed: int, full_data, results_path: str):
+
+def count_hmm_params(k: int, d: int, learn_means: bool, learn_covariances: bool) -> int:
     """
+    Approximate number of free parameters for BIC.
+    """
+    n_params = 0
+
+    # Initial probabilities: k probabilities, constrained to sum to 1
+    n_params += k - 1
+
+    # Transition matrix: k rows, each constrained to sum to 1
+    n_params += k * (k - 1)
+
+    if learn_means:
+        n_params += k * d # d x 1 mean vector per state
+
+    if learn_covariances:
+        n_params += k * d * (d + 1) / 2 # d x d covariance matrix per state. Since the covariance is symmetric, we just keep the upper triangle, including the main diagonal, which sums to (d * (d - 1)) / 2 + d = (d * (d - 1) + 2d) / 2 = (d * (d + 1)) / 2 covariance params per state
+
+    return n_params
+
+def off_diagonal_covariances(covs: np.ndarray) -> np.ndarray:
+    """
+    Return off-diagonal upper-triangle covariance entries as shape:
+    n_edges x k
+    """
+    k = covs.shape[0]
+    d = covs.shape[1]
+
+    iu = np.triu_indices(d, k=1)
+    return np.stack([covs[state][iu] for state in range(k)], axis=1)
+
+def is_better_score(new_score: float, old_score: float | None, metric: str) -> bool:
+    """
+    Decide whether a new realization is better than the current best.
+    """
+    if old_score is None or np.isnan(old_score):
+        return True
+
+    if metric == "total_LL":
+        return new_score > old_score
+
+    if metric in {"free_energy", "BIC"}:
+        return new_score < old_score
+
+    raise ValueError(
+        "model_save_metric must be one of: 'free_energy', 'total_LL', or 'BIC'."
+    )
+
+def run_full_model_eval(model_eval_log: dict, model_eval_log_save_path: str, grid_search_log: dict, k_values: list[int], n_realizations: int, model_save_metric: str, seed: int, full_data, results_path: str):
+    """
+    Fit n_realizations full-data HMMs for each k using hyperparameters selected
+    from grid_search_log. Save all realization summaries and save the best model.
+
     Args:
-        model_eval_log           : dict
-                                   The actual values of the model evaluation metrics will be stored here
-        model_eval_log_save_path : str
-                                   The path at which to save model_eval_log as a pickle. A save is done after the grid search for each k value
-        k_values                 : list[int]
-                                   k values for which to run model evaluation for
-        n_realizations           : int
-                                   Number of models to fit for each k value to account for variance in model initialization
-        model_save_metric        : str
-                                   'free_energy', 'total_LL' (total log-likelihood), or 'BIC' (Bayesian information criterion).
-                                   The realization that scores the best on model_save_metric is saved
-        seed                     : int
-                                   For reproducibility
-        full_data                : osl_dynamics.data.Data object
-                                   The full dataset
-        results_path             : str
-                                   Directory in which to save models
+        model_eval_log
+        model_eval_log_save_path :
+        grid_search_log
+        k_values
+        n_realizations
+        model_save_metric
+        seed
+        full_data
+        results_path
     Returns:
         None
     """
-    for k in k_values: 
-        print(f"Fitting model with {k} states...")
-        if 'realizations' in model_eval_log[k] and len(model_eval_log[k]['realizations']) < n_realizations:
-            del model_eval_log[k]['realizations']
-            del model_eval_log[k]['free_energy']
-            del model_eval_log[k]['total_LL'] 
-            del model_eval_log[k]['BIC'] 
-        
-        if 'realizations' not in model_eval_log[k]:
-            model_eval_log[k]['realizations'] = []
-            realizations = [] # contains model object from each realization. Models can't be pickled, so we will pick the best realization and save the corresponding model object separately
-            model_eval_log[k]['free_energy'] = []
-            model_eval_log[k]['total_LL'] = []
-            model_eval_log[k]['BIC'] = []
-            
-            random.seed(seed)
-            np.random.seed(seed)
-            
-            for r in range(n_realizations): # account for variability in .random_state_time_course_initialization(), then average later
-                start = time.perf_counter()
-                
-                print(f"Realization {r + 1}:")
-                model_eval_log[k]['realizations'].append({})
-                best_hyperparams_idx = np.nanargmin(np.mean(model_eval_log[k]['outer_free_energies'], axis=1))
-                best_hyperparams = model_eval_log[k]['hyperparams'][best_hyperparams_idx]
-                config = Config(
-                    n_states=k,
-                    n_channels=full_data.n_channels,
-                    sequence_length=best_hyperparams['sequence_length'],
-                    learn_means=best_hyperparams['learn_means'],
-                    learn_covariances=best_hyperparams['learn_covariances'],
-                    batch_size=best_hyperparams['batch_size'],
-                    learning_rate=best_hyperparams['learning_rate'],
-                    lr_decay=best_hyperparams['lr_decay'],
-                    n_epochs=int(np.ceil(np.mean(model_eval_log[k]['best_epochs'][best_hyperparams_idx]))),
-                )
-        
-                model = Model(config)
+    valid_metrics = {"free_energy", "total_LL", "BIC"}
+    if model_save_metric not in valid_metrics:
+        raise ValueError(f"model_save_metric must be one of {valid_metrics}.")
 
-                if best_hyperparams['set_regularizers']:
-                    model.set_regularizers(full_data)
-                
-                try:
-                    model.random_state_time_course_initialization(full_data, verbose=0)
-                except ValueError:
-                    print("random_state_time_course_initialization can't simulate a state time course where each state activates. Switching to using random_subset_initialization instead.")
-                    model.random_subset_initialization(full_data, verbose=0)
-    
-                history = model.fit(full_data, verbose=0)
-                realizations.append(model)
-                
-                free_energy = model.free_energy(full_data) # note that .free_energy() returns the free energy averaged over batches
-                model_eval_log[k]['free_energy'].append(free_energy)
-        
-                means, covs = model.get_means_covariances() 
-                if best_hyperparams['learn_means']:
-                    model_eval_log[k]['realizations'][r]['means'] = means
-                if best_hyperparams['learn_covariances']:
-                    model_eval_log[k]['realizations'][r]['covs'] = covs
-            
-                off_diags = []
-                for cov in covs:
-                    ut = np.triu(cov, k=1) # upper triangle, excluding main diagonal
-                    off_diag = ut[ut != 0] # np.triu() returns a full matrix, so filter out lower triangle entries and flatten to a 1-D array
-                    off_diags.append(off_diag)
-            
-                model_eval_log[k]['realizations'][r]['off_diags'] = np.array(off_diags).T # (number of upper triangle entries x k)
-                
-                total_LL = hmm_total_loglik(model, full_data)
-                model_eval_log[k]['total_LL'].append(total_LL)
-            
-                # Compute Bayesian Information Criterion (BIC)
-                d = full_data.n_channels
-                n_estimated_params = (k - 1) + k * (k - 1) # k initial state probabilities (but must sum to 1, so only k - 1 need to be estimated), and k * (k - 1) transition probabilities
-                if best_hyperparams['learn_means']:
-                    n_estimated_params += k * d # d x 1 mean vector per state
-                if best_hyperparams['learn_covariances']:
-                    n_estimated_params += k * (d * (d + 1)) / 2 # d x d covariance matrix per state. Since the covariance is symmetric, we just keep the upper triangle, including the main diagonal, which sums to (d * (d - 1)) / 2 + d = (d * (d - 1) + 2d) / 2 = (d * (d + 1)) / 2 covariance params per state
-                BIC = n_estimated_params * np.log(full_data.n_samples) - 2 * total_LL
-                model_eval_log[k]['BIC'].append(BIC)
+    for k in k_values:
+        print(f"\nFitting full-data model with {k} states...")
 
-                end = time.perf_counter()
-                time_elapsed = int(np.ceil(end - start))
-                min_elapsed, sec_elapsed = divmod(time_elapsed, 60)
-                print(f"Time elapsed for this realization: {min_elapsed} min. {sec_elapsed} sec.")
-            
-            model_dir = f'{results_path}/{k}_states'
-            os.makedirs(model_dir, exist_ok=True)
-            best_realization_path = f'{model_dir}/{k}_states_model'
+        # Select best hyperparameter setting from the grid_search_log
+        performance_df = hyperparam_performance(grid_search_log, k)
+        best_res = performance_df.iloc[0]
+        best_hyperparams, avg_outer_fe = best_res['hyperparams'], best_res['average_outer_free_energy']
+        hp_key = tuple(sorted(best_hyperparams.items()))
+        best_entry = grid_search_log[k][hp_key]
 
-            if model_save_metric == 'total_LL':
-                print("Saving model with highest total log-likelihood ...")
-                realizations[np.nanargmax(model_eval_log[k][model_save_metric])].save(best_realization_path)
-            else:
-                print(f"Saving model with lowest {model_save_metric} ...")
-                realizations[np.nanargmin(model_eval_log[k][model_save_metric])].save(best_realization_path) 
-            
-            model_eval_log[k]['best_realization_path'] = best_realization_path
-            with open(model_eval_log_save_path, 'wb') as f:
-                pickle.dump(model_eval_log, f)
-        else:
-            print(f"The model with {k} states has already been evaluated on the full dataset, skipping ...")
+        final_epochs = choose_final_epochs(best_entry, quantile=0.75)
+
+        # Preserve the original schedule horizon
+        schedule_n_epochs = int(best_hyperparams['n_epochs'])
+
+        model_dir = f"{results_path}/{k}_states"
+        os.makedirs(model_dir, exist_ok=True)
+
+        best_realization_path = f"{model_dir}/{k}_states_model"
+
+        # Initialize / validate model_eval_log entry
+        if k not in model_eval_log:
+            model_eval_log[k] = {}
+
+        eval_entry = model_eval_log[k]
+
+        # If this entry was created using a different selected hyperparameter setting, reset it. This prevents accidentally mixing results from different specs
+        spec = {
+            'hp_key': hp_key,
+            'selected_grid_score': float(avg_outer_fe),
+            'final_epochs': int(final_epochs),
+            'schedule_n_epochs': int(schedule_n_epochs),
+            'n_realizations': int(n_realizations),
+            'model_save_metric': model_save_metric,
+        }
+
+        existing_spec = eval_entry.get('spec')
+
+        if existing_spec is not None and existing_spec != spec:
+            print("Existing evaluation spec differs from current grid-search selection. Resetting this k")
+            model_eval_log[k] = {}
+            eval_entry = model_eval_log[k]
+
+        eval_entry.setdefault('spec', spec)
+        eval_entry.setdefault('selected_hyperparams', best_hyperparams)
+        eval_entry.setdefault('realizations', [])
+        eval_entry.setdefault('best_realization_idx', None)
+        eval_entry.setdefault('best_realization_score', None)
+        eval_entry.setdefault('best_realization_path', best_realization_path)
+        eval_entry.setdefault('status', "incomplete")
+
+        n_done = len(eval_entry['realizations'])
+
+        if eval_entry['status'] == "complete" and n_done >= n_realizations:
+            print(f"The model with {k} states has already been evaluated, skipping...")
+            continue
+
+        for r in range(n_done, n_realizations):
+            start = time.perf_counter()
+            print(f"Realization {r + 1}/{n_realizations}:")
+
+            realization_seed = make_seed(seed, "full", int(k), int(r))
+            set_all_seeds(realization_seed)
+
+            config = Config(
+                n_states=k,
+                n_channels=full_data.n_channels,
+                sequence_length=best_hyperparams['sequence_length'],
+                learn_means=best_hyperparams['learn_means'],
+                learn_covariances=best_hyperparams['learn_covariances'],
+                batch_size=best_hyperparams['batch_size'],
+                learning_rate=best_hyperparams['learning_rate'],
+                lr_decay=best_hyperparams['lr_decay'],
+                n_epochs=schedule_n_epochs,
+            )
+
+            model = Model(config)
+
+            if best_hyperparams['set_regularizers']:
+                model.set_regularizers(full_data)
+
+            init_method = "random_state_time_course"
+
+            try:
+                model.random_state_time_course_initialization(full_data, verbose=0)
+            except ValueError:
+                print("random_state_time_course_initialization can't simulate a state time course where each state activates. Switching to using random_subset_initialization instead.")
+                init_method = "random_subset"
+                model.random_subset_initialization(full_data, verbose=0)
+
+            history = model.fit(
+                full_data,
+                epochs=final_epochs,
+                verbose=0,
+            )
+
+            history = as_serializable_history(history)
+
+            free_energy = model.free_energy(full_data)
+            total_LL = hmm_total_loglik(model, full_data)
+
+            n_estimated_params = count_hmm_params(
+                k=k,
+                d=full_data.n_channels,
+                learn_means=best_hyperparams['learn_means'],
+                learn_covariances=best_hyperparams['learn_covariances'],
+            )
+
+            BIC = n_estimated_params * np.log(full_data.n_samples) - 2 * total_LL
+
+            realization = {
+                'realization': r,
+                'seed': int(realization_seed),
+                'init_method': init_method,
+                'history': history,
+                'final_epochs': final_epochs,
+                'schedule_n_epochs': schedule_n_epochs,
+                'free_energy': free_energy,
+                'total_LL': total_LL,
+                'BIC': BIC,
+            }
+
+            means, covs = model.get_means_covariances()
+
+            if best_hyperparams['learn_means']:
+                realization['means'] = means
+
+            if best_hyperparams['learn_covariances']:
+                realization['covs'] = covs
+                realization['off_diags'] = off_diagonal_covariances(covs)
+
+            # Useful for later reproducibility checks
+            realization['trans_matrix'] = model.get_trans_prob()
+            realization['initial_state_probs'] = model.get_initial_state_probs()
+
+            eval_entry['realizations'].append(realization)
+
+            metric_value = realization[model_save_metric]
+
+            if is_better_score(
+                new_score=metric_value,
+                old_score=eval_entry.get("best_realization_score"),
+                metric=model_save_metric,
+            ):
+                if model_save_metric == "total_LL":
+                    print("New best realization by highest total log-likelihood")
+                else:
+                    print(f"New best realization by lowest {model_save_metric}")
+
+                model.save(best_realization_path)
+
+                eval_entry["best_realization_idx"] = r
+                eval_entry["best_realization_score"] = metric_value
+                eval_entry["best_realization_path"] = best_realization_path
+
+            save_log_atomic(model_eval_log, model_eval_log_save_path)
+
+            end = time.perf_counter()
+            time_elapsed = int(np.ceil(end - start))
+            min_elapsed, sec_elapsed = divmod(time_elapsed, 60)
+            print(f"Time elapsed for this realization: {min_elapsed} min. {sec_elapsed} sec")
+
+            # Optional but helpful in long TensorFlow loops
+            del model
+
+        eval_entry['status'] = "complete"
+        save_log_atomic(model_eval_log, model_eval_log_save_path)
 
 def plot_state_time_course(subj_tc, n_samples: int, cmap: str, title: str, stim_times: list[int] | None = None):
     """
